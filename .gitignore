@@ -20,3 +20,7 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# Supabase secrets — fill in GourmetShareMap/Supabase/SupabaseConfig.swift locally,
+# copying it from SupabaseConfig.swift.example. Never commit the real values.
+GourmetShareMap/Supabase/SupabaseConfig.swift
