@@ -20,7 +20,7 @@ struct MainTabView: View {
                 MapView()
             }
 
-            Tab("登録", systemImage: "plus", value: .record) {
+            Tab("登録", systemImage: "camera", value: .record) {
                 RecordCreateView(isActive: selectedTab == .record)
             }
 
