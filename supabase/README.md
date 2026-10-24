@@ -67,7 +67,7 @@ DBのポートは公開せず、終了時に一時DB・コンテナを削除し�
 
 ### Swift Testing
 
-MacのXcodeで`SupabaseConfig.swift.example`と`GoogleMapConfig.swift.example`をもとに
+MacのXcodeで`SupabaseConfig.swift.example`と`GoogleMapsConfig.swift.example`をもとに
 ローカル設定ファイルを準備し、依存パッケージを解決してから、
 `GourmetShareMapTests`の`RecordRepositoryTests`を実行してください。
 テストは専用のインメモリ認証ストレージとURLProtocolを使い、実際の認証・DBへ接続しません。
@@ -93,7 +93,7 @@ Docker・Swift 6.2以上・Python 3・curlを用意し、リポジトリのル�
 bash supabase/tests/check_nearby_store_local.sh --live 35.713329 139.7617112
 ```
 
-APIキーは`GOOGLE_MAPS_API_KEY`環境変数、または既存の`GoogleMapConfig.swift`に設定します。
+APIキーは`GOOGLE_MAPS_API_KEY`環境変数、または既存の`GoogleMapsConfig.swift`に設定します。
 実GoogleのNearby Searchを1回呼び出すため、Places API (New)を有効にしたキーが必要で、
 API利用料金が発生する場合があります。キーはログや一時ソースへ出力しません。
 
@@ -150,3 +150,48 @@ iOSアプリ全体のビルドとシミュレータテストにはMacとXcodeが
 - Nearby Searchの結合テストは、実Google APIモードとGoogleモックモードの両方で、
   最寄り店舗の選択・ローカル実DBへの登録・再取得・同じ行の更新が成功しました。
 - 実際のSupabaseプロジェクトへの操作、iOSアプリ全体のビルド、Xcodeシミュレータテストは未実行です。
+
+## マップ・プロフィール向けの店舗一覧
+
+```swift
+let records = try await RecordRepository().fetchStores()
+```
+
+ログインユーザー自身の店舗を `created_at` 降順・同日時は `id` 昇順で返します。
+返却型は保存時と共通の `[StoreRecord]` です。座標がNULLの記録も返すため、
+マップでは座標のある記録を選び、プロフィールでは全記録を表示できます。
+0件は空配列、認証・通信・DB・デコードの失敗はthrowします。
+
+Supabaseの標準返却上限1000件に合わせ、1000件ずつ取得します。
+サーバーの「Max Rows」は1000以上を前提とします。ページ取得中の並行更新について
+スナップショット一貫性は保証しません。
+
+Swift 6.2以上・Python 3で、現行ソースの保存・一覧テストをLinux/Macから実行できます。
+初回はSDK 2.55.4の依存解決が必要です。実際の認証・DBへの接続やAPIキーは不要です。
+
+```sh
+bash scripts/check_repositories.sh
+bash supabase/tests/check_repository_db.sh
+```
+
+後者はDocker必須で、一時PostgreSQL 17に既存schema.sqlを適用し、保存・一覧・RLSを検証します。
+一時DBは終了時に削除し、既存DBは変更しません。Storageサービスは起動しません。
+
+`REPOSITORY_TEST_SDK_PATH` でローカルSDK、`REPOSITORY_TEST_BUILD_DIR` でビルドキャッシュ先を
+指定できます。同一キャッシュ先での同時実行は避けてください。
+Xcodeでは既存RecordRepositoryTestsに追加した一覧テストも実行できます。
+
+### このブランチの検証結果
+
+- Swift 6.4.1 / Linux、Supabase SDK 2.55.4で通信モックテスト20件成功（既存保存15件＋一覧5件）。
+- PostgreSQL 17の一時DBで保存・一覧の所有者条件・並び順・RLSのSQLテスト成功。
+- 実Supabaseへの操作とiOSアプリ全体のビルドは未実行。
+
+### 統合時の確認
+
+最新mainと元のPR統合先 `feat/upload-shop-info` を取り込み、保存15件＋一覧5件のテストを保持しています。
+画像Repositoryの利用方法は [IMAGE_REPOSITORY.md](IMAGE_REPOSITORY.md) を参照してください。
+CLIの接続マネージャー差し替えは、mainで追加されたUserRepositoryからも参照できる構成にしています。
+
+統合後の通信モックテストは35件（保存15件・一覧5件・画像15件）すべて成功しました。
+一時PostgreSQLで保存・一覧・画像のSQL・RLS検証も成功しています。

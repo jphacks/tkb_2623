@@ -23,7 +23,7 @@ enum NearbyShopError: LocalizedError {
         case .invalidCoordinate:
             return "緯度は-90〜90、経度は-180〜180の有限な数値で指定してください。"
         case .missingAPIKey:
-            return "GoogleMapConfig.swift の apiKey に実際のAPIキーを設定してください。"
+            return "GoogleMapsConfig.swift の apiKey に実際のAPIキーを設定してください。"
         case .invalidResponse:
             return "店舗情報のレスポンスが不正です。"
         case let .api(statusCode, message):
@@ -38,7 +38,7 @@ func findNearestShop(latitude: Double, longitude: Double) async throws -> [Nearb
     try await NearbyShopClient.findNearestShop(
         latitude: latitude,
         longitude: longitude,
-        apiKey: GoogleMapConfig.apiKey,
+        apiKey: GoogleMapsConfig.apiKey,
         session: .shared
     )
 }
@@ -99,7 +99,7 @@ enum NearbyShopClient {
                 name: place.displayName.text,
                 latitude: place.location.latitude,
                 longitude: place.location.longitude,
-                category: ShopCategory.category(primaryType: place.primaryType, types: place.types ?? [])
+                category: PlaceCategoryClassifier.category(primaryType: place.primaryType, types: place.types ?? [])
             )
         }
     }
