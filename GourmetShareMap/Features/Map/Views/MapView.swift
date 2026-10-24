@@ -89,11 +89,7 @@ struct MapView: View {
     }
 
     private var ownerFilterRow: some View {
-        HStack(alignment: .center) {
-            OwnerFilterControl(selection: $viewModel.ownerFilter)
-            Spacer()
-            MapLegendView()
-        }
+        OwnerFilterControl(selection: $viewModel.ownerFilter)
     }
 
     private var mapCanvas: some View {
@@ -109,6 +105,11 @@ struct MapView: View {
                 onStoreTapped: { viewModel.select(storeID: $0) },
                 onMapTapped: { viewModel.select(storeID: nil) }
             )
+
+            // 左下のGoogleの著作権表記と、右下の現在地ボタンを避けて上に置く。
+            MapLegendView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(12)
 
             addStoreButton
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)

@@ -68,7 +68,8 @@ struct GoogleMapView: UIViewRepresentable {
         let mapView = GMSMapView(options: options)
         mapView.delegate = context.coordinator
         mapView.settings.myLocationButton = true
-        mapView.settings.compassButton = true
+        // 回転を許可していないのでコンパスは出番がなく、右上の凡例と重なるだけなので出さない。
+        mapView.settings.compassButton = false
         mapView.settings.rotateGestures = false
         mapView.settings.tiltGestures = false
         return mapView
