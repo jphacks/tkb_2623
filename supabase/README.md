@@ -91,3 +91,39 @@ iOSアプリ全体のビルドとシミュレータテストにはMacとXcodeが
 - 一時PostgreSQL 17上で、Authの最小構成と変更していない既存`schema.sql`を適用し、
   `tests/store.sql`の保存・フレンド共有・RLSの検証が成功しました。
 - 実際のSupabaseプロジェクトへの操作、iOSアプリ全体のビルド、Xcodeシミュレータテストは未実行です。
+
+## マップ・プロフィール向けの店舗一覧
+
+```swift
+let records = try await RecordRepository().fetchStores()
+```
+
+ログインユーザー自身の店舗を `created_at` 降順・同日時は `id` 昇順で返します。
+返却型は保存時と共通の `[StoreRecord]` です。座標がNULLの記録も返すため、
+マップでは座標のある記録を選び、プロフィールでは全記録を表示できます。
+0件は空配列、認証・通信・DB・デコードの失敗はthrowします。
+
+Supabaseの標準返却上限1000件に合わせ、1000件ずつ取得します。
+サーバーの「Max Rows」は1000以上を前提とします。ページ取得中の並行更新について
+スナップショット一貫性は保証しません。
+
+Swift 6.2以上・Python 3で、現行ソースの保存・一覧テストをLinux/Macから実行できます。
+初回はSDK 2.55.4の依存解決が必要です。実際の認証・DBへの接続やAPIキーは不要です。
+
+```sh
+bash scripts/check_repositories.sh
+bash supabase/tests/check_repository_db.sh
+```
+
+後者はDocker必須で、一時PostgreSQL 17に既存schema.sqlを適用し、保存・一覧・RLSを検証します。
+一時DBは終了時に削除し、既存DBは変更しません。Storageサービスは起動しません。
+
+`REPOSITORY_TEST_SDK_PATH` でローカルSDK、`REPOSITORY_TEST_BUILD_DIR` でビルドキャッシュ先を
+指定できます。同一キャッシュ先での同時実行は避けてください。
+Xcodeでは既存RecordRepositoryTestsに追加した一覧テストも実行できます。
+
+### このブランチの検証結果
+
+- Swift 6.4.1 / Linux、Supabase SDK 2.55.4で通信モックテスト20件成功（既存保存15件＋一覧5件）。
+- PostgreSQL 17の一時DBで保存・一覧の所有者条件・並び順・RLSのSQLテスト成功。
+- 実Supabaseへの操作とiOSアプリ全体のビルドは未実行。
