@@ -17,10 +17,6 @@ struct RecordCreateView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    Text("03 店舗登録")
-                        .font(.system(size: 20, weight: .bold))
-                        .padding(.top, 8)
-
                     VStack(alignment: .leading, spacing: 8) {
                         PhotoGridEditor(photos: $viewModel.photos)
                         fieldError(.photos)

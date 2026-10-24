@@ -18,11 +18,6 @@ struct LoginView: View {
             backgroundColor.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 0) {
-                Text("01 ログイン")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(.black)
-                    .padding(.top, 8)
-
                 Spacer(minLength: 20)
 
                 VStack(spacing: 20) {

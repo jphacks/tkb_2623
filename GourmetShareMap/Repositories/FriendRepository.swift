@@ -84,6 +84,17 @@ final class FriendRepository: FriendDataSource {
         return rows.compactMap(\.friend)
     }
 
+    /// 自分がフォローしている相手の人数。行は取得せず件数だけを数える。
+    func fetchFriendCount() async throws -> Int {
+        let userID = try await client.auth.session.user.id
+
+        // friend の RLS はフォロワー側の行も返すため、自分がフォローしている行に絞る。
+        return try await client.from("friend")
+            .select("*", head: true, count: .exact)
+            .eq("user_id", value: userID)
+            .execute().count ?? 0
+    }
+
     func fetchIncomingRequests() async throws -> [FriendRequest] {
         let userID = try await client.auth.session.user.id
 
