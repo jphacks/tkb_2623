@@ -49,6 +49,47 @@ struct RecommendationRepositoryTests {
         }
     }
 
+    @Test func encodesExtractedImagePreferencesAndTrimsValues() async throws {
+        let (repository, session) = try await makeRepository()
+        defer { session.invalidateAndCancel() }
+        _ = try await repository.recommend(.init(
+            genre: "ラーメン", latitude: 35, longitude: 139,
+            preferences: .init(taste: " あっさり ", atmosphere: " 静か ", ingredients: [" 鶏 ", "鶏", "魚介"])
+        ))
+        let request = try #require(RecommendationMockURLProtocol.requests.last)
+        let body = try requestBody(request)
+        let preferences = try #require(body["preferences"] as? [String: Any])
+        #expect(preferences["taste"] as? String == "あっさり")
+        #expect(preferences["atmosphere"] as? String == "静か")
+        #expect(preferences["ingredients"] as? [String] == ["鶏", "魚介"])
+    }
+
+    @Test func omitsMissingOrBlankImagePreferences() async throws {
+        let (repository, session) = try await makeRepository()
+        defer { session.invalidateAndCancel() }
+        for preferences: RecommendationPreferences? in [nil, .init(taste: " ", atmosphere: "", ingredients: [])] {
+            _ = try await repository.recommend(.init(genre: "カフェ", latitude: 35, longitude: 139, preferences: preferences))
+            let request = try #require(RecommendationMockURLProtocol.requests.last)
+            #expect(try requestBody(request)["preferences"] == nil)
+        }
+    }
+
+    @Test func invalidImagePreferencesDoNotSendRequests() async throws {
+        let (repository, session) = try await makeRepository()
+        defer { session.invalidateAndCancel() }
+        for preferences: RecommendationPreferences in [
+            .init(taste: String(repeating: "x", count: 201)),
+            .init(atmosphere: String(repeating: "x", count: 201)),
+            .init(ingredients: Array(repeating: "鶏", count: 11)),
+            .init(ingredients: [" "]), .init(ingredients: [String(repeating: "x", count: 101)])
+        ] {
+            await #expect(throws: RecommendationError.invalidInput) {
+                try await repository.recommend(.init(genre: "カフェ", latitude: 35, longitude: 139, preferences: preferences))
+            }
+        }
+        #expect(RecommendationMockURLProtocol.requests.isEmpty)
+    }
+
     @Test func invalidInputsDoNotSendRequests() async throws {
         let (repository, session) = try await makeRepository()
         defer { session.invalidateAndCancel() }

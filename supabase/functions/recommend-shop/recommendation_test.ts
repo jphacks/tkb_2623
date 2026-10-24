@@ -173,7 +173,7 @@ Deno.test("success uses Auth identity, own ordered history and verified Places f
   const f = fixture({
     history: [{
       name: "過去の店",
-      category: null,
+      category: "ラーメン・麺類",
       reputation: 4.5,
       repeat_num: 3,
       memo: "🍜".repeat(1001),
@@ -227,7 +227,12 @@ Deno.test("success uses Auth identity, own ordered history and verified Places f
   )!;
   const sent = JSON.parse(gemini.body.contents[0].parts[0].text);
   equal([...sent.history[0].memo].length, 1000);
-  equal(sent.history[0].category, null);
+  equal(sent.history[0].category, "ラーメン・麺類");
+  assert(
+    history.url.searchParams.get("category")?.startsWith(
+      'in.("ラーメン・麺類"',
+    ),
+  );
   equal(Object.keys(sent).sort(), ["genre", "history"]);
   assert(!("tools" in gemini.body));
   equal(
@@ -254,6 +259,138 @@ Deno.test("empty history uses only genre; blank area does not geocode", async ()
   equal(searches[0].body.textQuery, "ラーメン");
   equal(searches[0].body.locationBias.circle, { center: origin, radius: 2000 });
   equal(searches[0].body.pageSize, 20);
+});
+
+Deno.test("history is filtered by genre before the 100-row prompt limit and excludes null categories", async () => {
+  const f = fixture({
+    history: [
+      ...Array.from(
+        { length: 101 },
+        () => ({
+          name: "unrelated",
+          category: "カフェ・喫茶",
+          memo: "do not send",
+        }),
+      ),
+      { name: "unknown", category: null },
+      { name: "old-label", category: "ラーメン", reputation: null, memo: null },
+      { name: "current-label", category: "ラーメン・麺類", reputation: 5 },
+    ],
+  });
+  equal((await f.invoke()).response.status, 200);
+  const gemini = f.calls.find((call) =>
+    call.url.hostname === "generativelanguage.googleapis.com"
+  )!;
+  const sent = JSON.parse(gemini.body.contents[0].parts[0].text);
+  equal(sent.history.map((row: { name: string }) => row.name), [
+    "old-label",
+    "current-label",
+  ]);
+  equal(sent.history[0].reputation, null);
+  assert(!JSON.stringify(sent).includes("do not send"));
+});
+
+Deno.test("no matching category uses empty history and does not widen the DB filter", async () => {
+  const f = fixture({
+    history: [{ name: "unrelated", category: "ラーメン・麺類" }],
+  });
+  equal((await f.invoke({ genre: "中華", ...origin })).response.status, 200);
+  const history = f.calls.find((call) =>
+    call.url.pathname === "/rest/v1/store"
+  )!;
+  assert(history.url.searchParams.get("category")?.startsWith('in.("中華"'));
+  const gemini = f.calls.find((call) =>
+    call.url.hostname === "generativelanguage.googleapis.com"
+  )!;
+  equal(JSON.parse(gemini.body.contents[0].parts[0].text).history, []);
+  equal(
+    f.calls.filter((call) => call.url.pathname === "/rest/v1/store").length,
+    1,
+  );
+});
+
+Deno.test("three extracted image attributes affect search and selection even without matching visits", async () => {
+  const f = fixture({
+    history: [{ name: "unrelated", category: "カフェ・喫茶" }],
+    analysis: {
+      search_query: "あっさりした鶏のラーメン",
+      preference_keywords: ["あっさり", "静か", "鶏"],
+    },
+    places: [
+      place("near", { rating: 5 }),
+      place("matched", {
+        rating: 4,
+        location: atDistance(500),
+        reviews: [{ text: { text: "あっさりした鶏スープで、静かな店内" } }],
+      }),
+    ],
+  });
+  const { response, data } = await f.invoke({
+    genre: "ラーメン",
+    ...origin,
+    preferences: {
+      taste: " あっさり ",
+      atmosphere: " 静か ",
+      ingredients: [" 鶏 ", "鶏"],
+    },
+  });
+  equal(response.status, 200);
+  equal(data.recommendation.place_id, "matched");
+  const gemini = f.calls.find((call) =>
+    call.url.hostname === "generativelanguage.googleapis.com"
+  )!;
+  const sent = JSON.parse(gemini.body.contents[0].parts[0].text);
+  equal(sent.history, []);
+  equal(sent.preferences, {
+    taste: "あっさり",
+    atmosphere: "静か",
+    ingredients: ["鶏"],
+  });
+  const search = f.calls.find((call) =>
+    call.url.pathname.endsWith(":searchText")
+  )!;
+  equal(search.body.textQuery, "あっさりした鶏のラーメン");
+});
+
+Deno.test("blank optional image attributes do not invent preferences", async () => {
+  const f = fixture();
+  equal(
+    (await f.invoke({
+      genre: "ラーメン",
+      ...origin,
+      preferences: { taste: " ", atmosphere: "", ingredients: [] },
+    })).response.status,
+    200,
+  );
+  const gemini = f.calls.find((call) =>
+    call.url.hostname === "generativelanguage.googleapis.com"
+  )!;
+  assert(!("preferences" in JSON.parse(gemini.body.contents[0].parts[0].text)));
+});
+
+Deno.test("invalid image attributes are rejected before any external call", async () => {
+  for (
+    const preferences of [
+      null,
+      [],
+      "image",
+      { taste: 1 },
+      { atmosphere: "x".repeat(201) },
+      { ingredients: "鶏" },
+      { ingredients: [" "] },
+      { ingredients: [1] },
+      { ingredients: ["x".repeat(101)] },
+      { ingredients: Array(11).fill("鶏") },
+    ]
+  ) {
+    const f = fixture();
+    equal(
+      (await f.invoke({ genre: "ラーメン", ...origin, preferences })).response
+        .status,
+      400,
+    );
+    equal(f.calls.length, 0);
+  }
 });
 
 Deno.test("Auth must validate bearer and authenticated user before Places or Gemini", async () => {
@@ -420,6 +557,7 @@ Deno.test("preferences can select unvisited shop over nearer higher rated shop",
   const f = fixture({
     history: [{
       name: "old",
+      category: "ラーメン・麺類",
       reputation: 5,
       repeat_num: 20,
       memo: "あっさりが好き",
@@ -442,7 +580,7 @@ Deno.test("preferences can select unvisited shop over nearer higher rated shop",
 
 Deno.test("price and category labels count for taste; missing rating renormalizes weights", async () => {
   const f = fixture({
-    history: [{ name: "old" }],
+    history: [{ name: "old", category: "ラーメン・麺類" }],
     analysis: {
       search_query: "カフェ",
       preference_keywords: ["安い", "カフェ"],

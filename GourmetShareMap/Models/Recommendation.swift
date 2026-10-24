@@ -5,6 +5,14 @@ nonisolated struct RecommendationInput: Encodable, Sendable {
     let latitude: Double
     let longitude: Double
     var area: String? = nil
+    var preferences: RecommendationPreferences? = nil
+}
+
+/// Attributes extracted from an image by the caller. Missing attributes stay nil/empty.
+nonisolated struct RecommendationPreferences: Encodable, Equatable, Sendable {
+    var taste: String? = nil
+    var atmosphere: String? = nil
+    var ingredients: [String] = []
 }
 
 nonisolated struct RecommendedShop: Decodable, Equatable, Sendable {
@@ -49,7 +57,7 @@ nonisolated enum RecommendationError: LocalizedError, Equatable, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidInput: "ジャンル・座標・検索地名を確認してください。"
+        case .invalidInput: "ジャンル・座標・検索地名・嗜好の属性を確認してください。"
         case let .api(_, error): error.message
         case .invalidResponse: "推薦APIから有効な応答を取得できませんでした。"
         }

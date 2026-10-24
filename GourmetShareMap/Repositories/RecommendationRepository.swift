@@ -18,6 +18,7 @@ final class RecommendationRepository {
     func recommend(_ input: RecommendationInput) async throws -> RecommendationResult {
         let genre = input.genre.trimmingCharacters(in: .whitespacesAndNewlines)
         let area = input.area?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preferences = try normalizedPreferences(input.preferences)
         // JavaScript measures input limits in UTF-16 code units.
         guard !genre.isEmpty, genre.utf16.count <= 200,
               (input.area?.utf16.count ?? 0) <= 200,
@@ -28,7 +29,7 @@ final class RecommendationRepository {
         let session = try await client.auth.session
         let payload = RecommendationInput(
             genre: genre, latitude: input.latitude, longitude: input.longitude,
-            area: area.flatMap { $0.isEmpty ? nil : $0 }
+            area: area.flatMap { $0.isEmpty ? nil : $0 }, preferences: preferences
         )
         do {
             // Give the server's 60-second deadline time to return its error body.
@@ -64,6 +65,28 @@ final class RecommendationRepository {
         } catch is DecodingError {
             throw RecommendationError.invalidResponse
         }
+    }
+
+    private func normalizedPreferences(_ input: RecommendationPreferences?) throws -> RecommendationPreferences? {
+        guard let input else { return nil }
+        func cleaned(_ value: String?) -> String? {
+            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+            return value.isEmpty ? nil : value
+        }
+        let taste = cleaned(input.taste)
+        let atmosphere = cleaned(input.atmosphere)
+        guard (taste?.utf16.count ?? 0) <= 200,
+              (atmosphere?.utf16.count ?? 0) <= 200,
+              input.ingredients.count <= 10 else { throw RecommendationError.invalidInput }
+        var ingredients: [String] = []
+        for ingredient in input.ingredients {
+            guard let value = cleaned(ingredient), value.utf16.count <= 100 else {
+                throw RecommendationError.invalidInput
+            }
+            if !ingredients.contains(value) { ingredients.append(value) }
+        }
+        guard taste != nil || atmosphere != nil || !ingredients.isEmpty else { return nil }
+        return .init(taste: taste, atmosphere: atmosphere, ingredients: ingredients)
     }
 }
 

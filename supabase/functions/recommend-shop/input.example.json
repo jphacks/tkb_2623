@@ -1,6 +1,11 @@
 {
-  "genre": "あっさりしたラーメン",
+  "genre": "ラーメン",
   "latitude": 35.6812,
   "longitude": 139.7671,
-  "area": "渋谷駅"
+  "area": "渋谷駅",
+  "preferences": {
+    "taste": "あっさりした塩味",
+    "atmosphere": "落ち着いた雰囲気",
+    "ingredients": ["鶏", "魚介"]
+  }
 }

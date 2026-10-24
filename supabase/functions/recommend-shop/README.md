@@ -10,14 +10,24 @@ AuthorizationにSupabase AuthのユーザーJWTを指定します。ユーザー
 
 ```json
 {
-  "genre": "あっさりしたラーメン",
+  "genre": "ラーメン",
   "latitude": 35.6812,
   "longitude": 139.7671,
-  "area": "渋谷駅"
+  "area": "渋谷駅",
+  "preferences": {
+    "taste": "あっさりした塩味",
+    "atmosphere": "落ち着いた雰囲気",
+    "ingredients": ["鶏", "魚介"]
+  }
 }
 ```
 
 - `genre`: 空白以外の文字が必要。前後空白除去後に最大200 UTF-16コード単位。
+- `preferences`: 任意。画像解析で抽出済みの3属性を受け取ります。画像そのものの解析は呼び出し元で行います。
+  `taste`（味）・`atmosphere`（雰囲気）は各最大200 UTF-16コード単位の任意文字列、
+  `ingredients`（素材）は最大10件、各最大100 UTF-16コード単位の文字列配列です。
+  味・雰囲気の空白や未指定は未入力扱いとし、素材の空文字は拒否します。素材の前後空白・重複を除去します。
+  不明な属性は省略し、入力値を推測して補いません。既存の`preferences`なしの呼び出しも使用できます。
 - 緯度・経度: 必須の有限な数値。緯度は-90〜90、経度は-180〜180。
 - `area`: 任意の文字列、最大200 UTF-16コード単位。省略・空白時は現在地から半径2km。
   指定時はPlaces Text Searchで特定した地点から半径2km。地名・駅名を入力し、
@@ -80,16 +90,26 @@ Place Detailsの取得結果を使用します。外部提供者の出典があ�
 
 ## 選定方法
 
-本人の履歴を評価降順（NULLは最後）、来店回数降順、作成日時降順、ID昇順で最大100件取得し、
+本人の履歴を希望ジャンルに対応するカテゴリでDB上で絞り込み、その結果から
+評価降順（NULLは最後）、来店回数降順、作成日時降順、ID昇順で最大100件取得し、
 メモを各1,000 UnicodeコードポイントまでGeminiへ渡します。氏名・メール・ユーザーID・座標はGeminiへ送りません。
 検索中心座標はPlaces APIへ渡します。
-過去の店舗名・評価・メモ等を外部サービスへ送信する機能のため、
+過去の店舗名・評価・メモ、抽出済み3属性等を外部サービスへ送信する機能のため、
 提供開始時のプライバシー説明に反映してください。実ユーザーの履歴には、有効な請求先を紐付けた
 GeminiのPaid Servicesを使用してください。
 [Geminiのデータ利用条件](https://ai.google.dev/gemini-api/terms)を参照してください。
 
-Geminiの構造化出力で検索語・キーワードを生成します。検索語には希望ジャンルを保持し、
-履歴なしの場合はジャンルのみを検索語とします。Gemini呼び出しは1回で、検索ツールを指定しません。
+カテゴリは既存の13分類に合わせます。例:「ラーメン」→「ラーメン・麺類」、
+「カフェ」→「カフェ・喫茶」、「イタリアン」→「洋食・西洋料理」。
+過去の「ラーメン」「カフェ」等の表記も同じカテゴリとして扱います。自由入力に複数のカテゴリ名がある場合は、
+最長の一致語を採用します（「パンケーキ」は「パン」より優先）。細かい料理の区別は既存DBのカテゴリ粒度に従います。
+既知のカテゴリに対応付けられないジャンルは、カテゴリ名の部分一致で絞り込みます。
+NULLカテゴリ・別カテゴリの履歴はGeminiへ渡しません。該当0件でも別カテゴリへ広げず、空の履歴で続行します。
+DBの取得条件に加え、取得後・100件制限の前にもカテゴリを照合するため、ローカルCLIの履歴JSONにも同じ絞り込みが適用されます。
+
+Geminiの構造化出力で検索語・キーワードを生成します。希望ジャンル→明示された3属性→該当ジャンルの履歴の順に優先します。
+検索語には希望ジャンルを保持し、履歴なしでも3属性があれば検索語と嗜好キーワードに反映します。
+履歴も3属性もない場合はジャンルのみを検索語とします。Gemini呼び出しは1回で、検索ツールを指定しません。
 Placesで取得した口コミ等はGeminiへ送信せず、今回の採点内で参照します。
 APIエラー・タイムアウト・クォータ超過はエラーとして返し、自動再試行しません。
 
@@ -114,7 +134,7 @@ Text Searchの最初の最大20件から飲食施設を抽出し、Haversineの�
 1. 以下のSwiftファイルの`static let apiKey`へキーを設定します。両ファイルはGit管理対象外です。Geminiの実ファイルはiOSアプリのビルド対象からも除外しています。キーをチャットへ貼り付ける必要はありません。
    - `GourmetShareMap/Services/Gemini/GoogleGeminiConfig.swift`
    - `GourmetShareMap/Services/Places/GoogleMapConfig.swift`
-2. `input.example.json`のジャンル・地名を変更します。現在地中心の検索を試す場合は`area`を削除し、検証したい緯度・経度を設定します。
+2. `input.example.json`のジャンル・地名・抽出済み3属性を変更します。3属性を使わない場合は`preferences`を削除してください。現在地中心の検索を試す場合は`area`を削除し、検証したい緯度・経度を設定します。
 3. リポジトリルートで以下を実行します。
 
 ```sh
@@ -195,7 +215,14 @@ APIのエラーは`RecommendationError.api(statusCode:error:)`でコード・メ
 
 ```swift
 let result = try await RecommendationRepository().recommend(
-    RecommendationInput(genre: "ラーメン", latitude: 35.6812, longitude: 139.7671, area: "渋谷駅")
+    RecommendationInput(
+        genre: "ラーメン", latitude: 35.6812, longitude: 139.7671, area: "渋谷駅",
+        preferences: RecommendationPreferences(
+            taste: "あっさりした塩味",
+            atmosphere: "落ち着いた雰囲気",
+            ingredients: ["鶏", "魚介"]
+        )
+    )
 )
 let shop = result.recommendation
 // shop.placeID / shop.name / shop.latitude / shop.longitude
