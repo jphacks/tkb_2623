@@ -6,10 +6,12 @@
 import SwiftUI
 
 /// 育てる。登録した店舗数（= AIの学習データ数）でまんぷく先生が3段階に育つ画面。
-/// 学習と推論は別リポジトリのAPIが担当するので、この画面は表示とAPI呼び出しだけを持つ。
+/// 学習と推論はCloud Run上のAIバックエンドが担当し、この画面はSupabase Edge Function経由で呼び出すだけ。
 struct GrowView: View {
     @Environment(RecordStore.self) private var recordStore
     @State private var viewModel = GrowViewModel()
+    @State private var freeText = ""
+    @FocusState private var isFreeTextFocused: Bool
 
     private var progress: MascotProgress {
         viewModel.progress(storeCount: recordStore.records.count)
@@ -35,10 +37,8 @@ struct GrowView: View {
         // 表示時と、記録を登録・更新したあとにモデルの状態を取り直す。
         .task(id: recordStore.records) { await viewModel.loadStats(records: recordStore.records) }
         .sheet(isPresented: recommendationSheetBinding) {
-            if let recommendation = viewModel.recommendation {
-                RecommendationSheet(recommendation: recommendation) {
-                    viewModel.dismissRecommendation()
-                }
+            RecommendationSheet(recommendations: viewModel.recommendations) {
+                viewModel.dismissRecommendations()
             }
         }
     }
@@ -137,68 +137,79 @@ struct GrowView: View {
     }
 
     private var recommendSection: some View {
-        VStack(spacing: 8) {
-            Button {
-                Task { await viewModel.recommend(records: recordStore.records) }
-            } label: {
-                HStack(spacing: 8) {
-                    if viewModel.isRecommending {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 17, weight: .bold))
-                    }
-
-                    Text(viewModel.isRecommending ? "考えています…" : "今日のおすすめを聞く")
-                        .font(.system(size: 16.5, weight: .bold))
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 54)
-                .background(.appPrimary, in: Capsule())
-            }
-            .disabled(viewModel.isRecommending || !canRecommend)
-            .opacity(canRecommend ? 1 : 0.45)
-
-            if let message = viewModel.recommendErrorMessage {
-                Text(message)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.appPrimary)
+        VStack(spacing: 10) {
+            if progress.level == .lv1 {
+                // Lv.1（登録0〜4件）はAIがまだ学習できないため、レコメンドUI自体を出さない。
+                Text(progress.progressText + "、AIがレコメンドできるようになります")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.appText.opacity(0.55))
                     .multilineTextAlignment(.center)
             } else {
-                Text(recommendHint)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.appText.opacity(0.45))
-                    .multilineTextAlignment(.center)
+                TextField("例: 渋谷で静かなデート向けの和食", text: $freeText, axis: .vertical)
+                    .font(.system(size: 14.5))
+                    .focused($isFreeTextFocused)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .background(.appCard, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .submitLabel(.search)
+                    .onSubmit { requestRecommend() }
+
+                Button {
+                    requestRecommend()
+                } label: {
+                    HStack(spacing: 8) {
+                        if viewModel.isRecommending {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 17, weight: .bold))
+                        }
+
+                        Text(viewModel.isRecommending ? "考えています…" : "レコメンドしてもらう")
+                            .font(.system(size: 16.5, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(.appPrimary, in: Capsule())
+                }
+                .disabled(viewModel.isRecommending || !canRecommend)
+                .opacity(canRecommend ? 1 : 0.45)
+
+                if let message = viewModel.recommendErrorMessage {
+                    Text(message)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.appPrimary)
+                        .multilineTextAlignment(.center)
+                } else {
+                    Text("近くのお店から、まんぷく先生が好みを予測します")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.appText.opacity(0.45))
+                        .multilineTextAlignment(.center)
+                }
             }
         }
         .padding(.top, 2)
     }
 
-    /// 記録を読み込めていて、1件以上あるときだけ押せる。
-    private var canRecommend: Bool {
-        recordStore.loadState == .loaded && !recordStore.records.isEmpty
+    private func requestRecommend() {
+        let text = freeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        isFreeTextFocused = false
+        Task { await viewModel.recommend(freeText: text, records: recordStore.records) }
     }
 
-    private var recommendHint: String {
-        switch recordStore.loadState {
-        case .idle, .loading:
-            "記録を読み込んでいます…"
-        case .failed:
-            "記録を読み込めませんでした。通信状況を確認してください。"
-        case .loaded:
-            recordStore.records.isEmpty
-                ? "お店を1件登録すると、まんぷく先生が育ちはじめます"
-                : "近くのお店から、まんぷく先生が好みを予測します"
-        }
+    /// 記録を読み込めていて、レコメンドが解禁されるLv.2以上のときだけ押せる。
+    private var canRecommend: Bool {
+        recordStore.loadState == .loaded && progress.level != .lv1
     }
 
     private var recommendationSheetBinding: Binding<Bool> {
         Binding(
-            get: { viewModel.recommendation != nil },
+            get: { !viewModel.recommendations.isEmpty },
             set: { isPresented in
-                if !isPresented { viewModel.dismissRecommendation() }
+                if !isPresented { viewModel.dismissRecommendations() }
             }
         )
     }

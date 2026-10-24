@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel, Field
 
-from ml import train_user, predict_for_user, has_model, MIN_RECORDS
+from ml import train_user, predict_for_user, MIN_RECORDS
 from recommend import extract_conditions, search_candidates
 
 app = FastAPI(title="MoguMap AI Backend", version="0.2")
@@ -70,20 +70,23 @@ def predict_endpoint(body: PredictRequest):
 
 @app.post("/recommend", dependencies=[Depends(auth)])
 def recommend_endpoint(body: RecommendRequest):
-    """未学習なら先に学習してから推論する(on-demand)。"""
+    """渡された最新の履歴で毎回学習し直してから推論する(on-demand)。
+
+    5件ごとの自動バッチ学習は見送ったため、ここで常に最新のhistoryで学習し直すことで
+    モデルを更新し続ける(小データなのでLightGBMの再学習コストは小さい)。
+    """
     if len(body.history) < MIN_RECORDS:
         raise HTTPException(400, f"need >={MIN_RECORDS} registered stores before recommendations")
-    if not has_model(body.user_id):
-        try:
-            train_user(body.user_id, body.history)
-        except ValueError as e:
-            raise HTTPException(400, str(e))
+    try:
+        model_stats = train_user(body.user_id, body.history)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     conditions = extract_conditions(body.free_text)
     candidates = search_candidates(conditions, body.lat, body.lng)
     if not candidates:
-        return {"predictions": [], "conditions": conditions}
+        return {"predictions": [], "conditions": conditions, "model_stats": model_stats}
     try:
         predictions = predict_for_user(body.user_id, body.history, candidates)
     except FileNotFoundError as e:
         raise HTTPException(409, str(e))
-    return {"predictions": predictions[:3], "conditions": conditions}
+    return {"predictions": predictions[:3], "conditions": conditions, "model_stats": model_stats}

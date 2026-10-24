@@ -127,6 +127,25 @@ Deno.serve(async (req: Request) => {
   }
 
   const resultText = await backendResponse.text();
+
+  if (backendResponse.ok) {
+    try {
+      const result = JSON.parse(resultText);
+      const modelStats = result.model_stats;
+      if (modelStats) {
+        await supabase.from("ai_model_status").upsert({
+          user_id: userId,
+          record_count: modelStats.trained_records ?? history.length,
+          mean_abs_error: modelStats.mean_abs_error ?? null,
+          model_gcs_path: modelStats.model_path ?? null,
+          trained_at: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // 統計の保存に失敗しても、レコメンド結果自体は返す。
+    }
+  }
+
   return new Response(resultText, {
     status: backendResponse.status,
     headers: { "Content-Type": "application/json" },

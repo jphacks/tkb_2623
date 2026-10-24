@@ -166,7 +166,8 @@ struct ProfileViewModelTests {
         StoreRecord(
             id: UUID(), name: name, category: category, reputation: reputation,
             userID: UUID(), googlePlaceID: nil, memo: nil, repeatNum: repeatNum,
-            latitude: nil, longitude: nil, createdAt: createdAt
+            latitude: nil, longitude: nil, createdAt: createdAt,
+            googleRating: nil, priceLevel: nil, reviewCount: nil
         )
     }
 }

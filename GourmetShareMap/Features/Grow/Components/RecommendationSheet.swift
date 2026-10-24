@@ -5,54 +5,32 @@
 
 import SwiftUI
 
-/// レコメンド結果。まんぷく先生が薦めた1件を、予測評価と理由つきで出す。
-// TODO: レコメンド結果画面の仕様が決まったら差し替える（候補を複数出す／マップにピンを立てる等）。
+/// レコメンド結果。まんぷく先生が薦めた上位3件を、予測評価と理由つきで出す。
 struct RecommendationSheet: View {
-    let recommendation: Recommendation
+    let recommendations: [Recommendation]
     var onClose: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
             MascotAnimationView(level: .lv3, framesPerSecond: 6)
-                .frame(height: 120)
-                .padding(.top, 24)
+                .frame(height: 100)
+                .padding(.top, 20)
 
-            VStack(spacing: 14) {
-                Text("ここ、好きだと思います")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.appPrimary)
+            Text("ここ、好きだと思います")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.appPrimary)
+                .padding(.top, 6)
 
-                Text(recommendation.name)
-                    .font(.system(size: 24, weight: .heavy))
-                    .foregroundStyle(.appText)
-                    .multilineTextAlignment(.center)
-
-                HStack(spacing: 10) {
-                    CategoryBadge(category: recommendation.category)
-
-                    HStack(spacing: 5) {
-                        StarRatingView(rating: recommendation.predictedRating)
-                        Text(String(format: "%.1f", recommendation.predictedRating))
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.appText)
-                            .monospacedDigit()
+            ScrollView {
+                VStack(spacing: 10) {
+                    ForEach(recommendations) { recommendation in
+                        card(for: recommendation)
                     }
                 }
-
-                Text(recommendation.reason)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.appText.opacity(0.65))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
-
-                Text("★は、あなたの記録から予測した評価です")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.appText.opacity(0.4))
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 8)
-
-            Spacer(minLength: 16)
 
             Button(action: onClose) {
                 Text("閉じる")
@@ -64,21 +42,60 @@ struct RecommendationSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 24)
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.appBackground)
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
+    }
+
+    private func card(for recommendation: Recommendation) -> some View {
+        VStack(spacing: 8) {
+            Text(recommendation.name)
+                .font(.system(size: 18, weight: .heavy))
+                .foregroundStyle(.appText)
+                .multilineTextAlignment(.center)
+
+            HStack(spacing: 10) {
+                CategoryBadge(category: recommendation.category)
+
+                HStack(spacing: 5) {
+                    StarRatingView(rating: recommendation.predictedRating)
+                    Text(String(format: "%.1f", recommendation.predictedRating))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.appText)
+                        .monospacedDigit()
+                }
+            }
+
+            Text(recommendation.reason)
+                .font(.system(size: 12.5))
+                .foregroundStyle(.appText.opacity(0.65))
+                .multilineTextAlignment(.center)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .background(.appCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
 #Preview {
     RecommendationSheet(
-        recommendation: Recommendation(
-            placeID: "preview",
-            name: "中華そば 一会",
-            category: "ラーメン",
-            predictedRating: 4.3,
-            reason: "ラーメンの記録が8件あって、平均★4.3。似た雰囲気のお店です。"
-        )
+        recommendations: [
+            Recommendation(
+                placeID: "preview-1",
+                name: "中華そば 一会",
+                category: "ラーメン・麺類",
+                predictedRating: 4.3,
+                reason: "「ラーメン食べたい」に近い、ラーメン・麺類の記録が8件あって平均★4.3。"
+            ),
+            Recommendation(
+                placeID: "preview-2",
+                name: "麺屋 風花",
+                category: "ラーメン・麺類",
+                predictedRating: 4.1,
+                reason: "「ラーメン食べたい」に近い、ラーメン・麺類の記録が8件あって平均★4.3。"
+            ),
+        ]
     )
 }
