@@ -9,6 +9,8 @@ import SwiftUI
 struct TimelinePostCard: View {
     let post: TimelinePost
     let timeText: String
+    /// アバター・名前タップ時の処理。プロフィール画面をシート表示する等、呼び出し側に委ねる。
+    var onTapUser: () -> Void = {}
 
     private let cornerRadius: CGFloat = 18
 
@@ -35,12 +37,17 @@ struct TimelinePostCard: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                UserInitialAvatar(userID: post.userID, name: post.userName)
+                Button(action: onTapUser) {
+                    HStack(spacing: 8) {
+                        UserInitialAvatar(userID: post.userID, name: post.userName)
 
-                Text(post.userName ?? "名前未設定")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
+                        Text(post.userName ?? "名前未設定")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(.plain)
 
                 if post.isMine {
                     Text("自分")

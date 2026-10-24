@@ -12,6 +12,9 @@ struct TimelineView: View {
 
     @Environment(RecordStore.self) private var recordStore
     @State private var viewModel = TimelineViewModel()
+    /// アバター/名前がタップされた投稿。プロフィールのシート表示に使う
+    /// （`TimelinePost`はIdentifiableなため、そのまま`sheet(item:)`に渡せる）。
+    @State private var selectedProfilePost: TimelinePost?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +25,15 @@ struct TimelineView: View {
         .background(.appBackground)
         // 表示時と、自分の記録を登録・更新したあとに取り直す。
         .task(id: recordStore.records) { await viewModel.load() }
+        .sheet(item: $selectedProfilePost) { post in
+            // 自分の投稿は既存のProfileView（編集・ログアウトあり）、
+            // フレンドの投稿は専用のFriendProfileView（閲覧専用）を開く。
+            if post.isMine {
+                ProfileView()
+            } else {
+                FriendProfileView(userID: post.userID)
+            }
+        }
     }
 
     private var header: some View {
@@ -86,7 +98,9 @@ struct TimelineView: View {
                         .padding(.top, 8)
 
                     ForEach(section.posts) { post in
-                        TimelinePostCard(post: post, timeText: viewModel.timeText(for: post))
+                        TimelinePostCard(post: post, timeText: viewModel.timeText(for: post)) {
+                            selectedProfilePost = post
+                        }
                     }
                 }
             }
