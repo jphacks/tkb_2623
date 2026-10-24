@@ -5,11 +5,19 @@
 
 import PhotosUI
 import SwiftUI
+import UIKit
 
 struct ProfileEditView: View {
     @StateObject private var viewModel: ProfileEditViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var cropCandidate: CropCandidate?
+
+    /// クロップ画面に渡す画像。UIImageはIdentifiableではないため、.fullScreenCover(item:)用に包む。
+    private struct CropCandidate: Identifiable {
+        let id = UUID()
+        let image: UIImage
+    }
 
     private let backgroundColor = Color(red: 0.984, green: 0.968, blue: 0.937)
     private let accentOrange = Color(red: 0.76, green: 0.35, blue: 0.22)
@@ -69,6 +77,21 @@ struct ProfileEditView: View {
         .onChange(of: selectedPhotoItem) { _, newItem in
             Task { await loadSelectedPhoto(newItem) }
         }
+        .fullScreenCover(item: $cropCandidate) { candidate in
+            ProfileImageCropView(
+                image: candidate.image,
+                onCancel: {
+                    // 選択前の状態を維持する。同じ写真を選び直せるようselectedPhotoItemもリセットする。
+                    cropCandidate = nil
+                    selectedPhotoItem = nil
+                },
+                onConfirm: { data in
+                    viewModel.selectImage(data: data, format: .jpeg)
+                    cropCandidate = nil
+                    selectedPhotoItem = nil
+                }
+            )
+        }
     }
 
     private var avatarSection: some View {
@@ -116,16 +139,12 @@ struct ProfileEditView: View {
             .background(Color.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
+    /// 選んだ画像を読み込み、クロップ画面に渡す。実際の反映はクロップ確定後に行う。
     private func loadSelectedPhoto(_ item: PhotosPickerItem?) async {
-        guard let item, let data = try? await item.loadTransferable(type: Data.self) else { return }
-        viewModel.selectImage(data: data, format: imageFormat(for: data))
-    }
-
-    /// PNGの先頭バイト列を見て、PNG/JPEGどちらでアップロードするかを判定する。
-    /// 判定できない場合はJPEGとして扱う。
-    private func imageFormat(for data: Data) -> RecordImageFormat {
-        let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
-        return data.starts(with: pngSignature) ? .png : .jpeg
+        guard let item,
+              let data = try? await item.loadTransferable(type: Data.self),
+              let uiImage = UIImage(data: data) else { return }
+        cropCandidate = CropCandidate(image: uiImage)
     }
 
     private func save() async {
