@@ -1,0 +1,5 @@
+// GoogleGeminiConfig.swiftへコピーし、実際のAPIキーを設定してください。
+// ローカルの推薦精度確認CLIが読み取ります。実ファイルはGit管理・iOSビルド対象外です。
+enum GoogleGeminiConfig {
+    static let apiKey = "YOUR_GOOGLE_GEMINI_API_KEY"
+}

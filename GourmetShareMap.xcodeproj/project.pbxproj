@@ -53,6 +53,7 @@
 				Models/.gitkeep,
 				Repositories/.gitkeep,
 				Resources/.gitkeep,
+				Services/Gemini/GoogleGeminiConfig.swift,
 				Services/Places/.gitkeep,
 				Shared/Components/.gitkeep,
 			);

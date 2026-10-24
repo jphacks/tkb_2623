@@ -1,5 +1,8 @@
 # 店舗記録の保存
 
+AI店舗推薦のAPI・Swift呼び出し・設定・テストについては
+[recommend-shopの手順](functions/recommend-shop/README.md)を参照してください。
+
 `RecordRepository`は既存の **`public.store`（単数形）** に保存します。
 テーブル・カラム・制約・RLSの変更や追加マイグレーションはありません。
 既存のフレンド共有と画像の参照関係もそのまま使用します。

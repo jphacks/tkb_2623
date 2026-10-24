@@ -1,0 +1,8 @@
+{
+  "compilerOptions": { "strict": true },
+  "fmt": { "proseWrap": "preserve" },
+  "tasks": {
+    "test": "deno test recommendation_test.ts live_check_test.ts local_config_test.ts",
+    "check": "deno check index.ts recommendation_test.ts live_check.ts live_check_test.ts local_config_test.ts"
+  }
+}

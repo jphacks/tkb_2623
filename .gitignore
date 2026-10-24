@@ -27,3 +27,6 @@ GourmetShareMap/Supabase/SupabaseConfig.swift
 
 # Google Maps API key
 GourmetShareMap/Services/Places/GoogleMapConfig.swift
+
+# Local Gemini key for the recommendation CLI
+GourmetShareMap/Services/Gemini/GoogleGeminiConfig.swift

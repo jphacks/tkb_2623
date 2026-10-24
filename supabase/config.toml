@@ -1,0 +1,6 @@
+project_id = "mogumap"
+
+[functions.recommend-shop]
+# Validate the user JWT with Auth in the handler (supports asymmetric JWTs and
+# returns the same error envelope as other failures). This is NOT anonymous access.
+verify_jwt = false
