@@ -33,9 +33,42 @@
 		C34842783088C87100153DB9 /* GourmetShareMapUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GourmetShareMapUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C3484F003088F00000153DB9 /* Exceptions for "GourmetShareMap" folder in "GourmetShareMap" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				App/.gitkeep,
+				Core/.gitkeep,
+				Features/Auth/ViewModels/.gitkeep,
+				Features/Auth/Views/.gitkeep,
+				Features/Friend/Components/.gitkeep,
+				Features/Friend/ViewModels/.gitkeep,
+				Features/Friend/Views/.gitkeep,
+				Features/Map/Components/.gitkeep,
+				Features/Map/ViewModels/.gitkeep,
+				Features/Map/Views/.gitkeep,
+				Features/Profile/ViewModels/.gitkeep,
+				Features/Profile/Views/.gitkeep,
+				Features/Record/Components/.gitkeep,
+				Features/Record/ViewModels/.gitkeep,
+				Features/Record/Views/.gitkeep,
+				Mock/.gitkeep,
+				Models/.gitkeep,
+				Repositories/.gitkeep,
+				Resources/.gitkeep,
+				Services/Places/.gitkeep,
+				Shared/Components/.gitkeep,
+			);
+			target = C34842603088C86F00153DB9 /* GourmetShareMap */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C34842633088C86F00153DB9 /* GourmetShareMap */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C3484F003088F00000153DB9 /* Exceptions for "GourmetShareMap" folder in "GourmetShareMap" target */,
+			);
 			path = GourmetShareMap;
 			sourceTree = "<group>";
 		};
