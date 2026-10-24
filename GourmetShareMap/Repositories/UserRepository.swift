@@ -14,6 +14,20 @@ final class UserRepository {
         self.client = client
     }
 
+    /// ログイン中ユーザー自身のプロフィール（表示名・自己紹介・アイコン画像パス）を取得する。
+    /// user テーブルのRLS（auth.uid() = id の行のみ参照可）により、他ユーザーの行は取得できない。
+    func fetchMyProfile() async throws -> UserProfile {
+        let userId = try await client.auth.session.user.id
+
+        return try await client
+            .from("user")
+            .select("id, name, bio, profile_image")
+            .eq("id", value: userId)
+            .single()
+            .execute()
+            .value
+    }
+
     /// ログイン中ユーザー自身の記録（store）件数を返す。
     /// head: true で行データは取得せず、件数だけを取得する。
     func fetchMyRecordCount() async throws -> Int {
