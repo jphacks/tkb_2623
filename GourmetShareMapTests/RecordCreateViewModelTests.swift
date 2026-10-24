@@ -34,7 +34,7 @@ struct RecordCreateViewModelTests {
         }
         #expect(shops.isEmpty)
         #expect(viewModel.selectedCandidate == nil)
-        #expect(!viewModel.canSave)
+        #expect(viewModel.missingFields.contains(.store))
     }
 
     @Test func doesNotSearchUntilPhotoIsAdded() async {
@@ -92,7 +92,7 @@ struct RecordCreateViewModelSaveTests {
         #expect(viewModel.selectedCandidate == nil)
         #expect(viewModel.rating == 0)
         #expect(viewModel.memo.isEmpty)
-        #expect(viewModel.savedMessage != nil)
+        #expect(viewModel.savedSummary != nil)
     }
 
     @Test func partialUploadFailureKeepsInputForRetry() async {
@@ -111,7 +111,43 @@ struct RecordCreateViewModelSaveTests {
 
         await viewModel.retryFailedUploads(to: recordStore)
         #expect(viewModel.photos.isEmpty)
-        #expect(viewModel.savedMessage != nil)
+        #expect(viewModel.savedSummary != nil)
+    }
+
+    @Test func missingRequiredFieldsShowErrorsWithoutSaving() async {
+        let repository = FakeStoreRecordRepository()
+        let recordStore = RecordStore(recordRepository: repository, imageUploader: FakeImageUploader())
+        let viewModel = RecordCreateViewModel(storeSearchService: MockStoreSearchService())
+        viewModel.memo = "メモだけ"
+        #expect(viewModel.errorMessage(for: .photos) == nil)
+
+        let didStart = await viewModel.save(to: recordStore)
+
+        #expect(!didStart)
+        #expect(repository.savedInputs.isEmpty)
+        #expect(viewModel.missingFields == [.photos, .store, .rating])
+        #expect(viewModel.errorMessage(for: .photos) != nil)
+        #expect(viewModel.errorMessage(for: .rating) != nil)
+
+        // 入力した項目のエラーは消える。
+        viewModel.rating = 3
+        #expect(viewModel.errorMessage(for: .rating) == nil)
+    }
+
+    @Test func memoIsOptional() async throws {
+        let repository = FakeStoreRecordRepository()
+        let recordStore = RecordStore(recordRepository: repository, imageUploader: FakeImageUploader())
+        let viewModel = filledViewModel()
+        viewModel.memo = ""
+
+        let didStart = await viewModel.save(to: recordStore)
+
+        #expect(didStart)
+        let input = try #require(repository.savedInputs.first)
+        #expect(input.memo == nil)
+        #expect(viewModel.savedSummary?.rating == 4)
+        #expect(viewModel.savedSummary?.photoCount == 2)
+        #expect(!viewModel.showsValidationErrors)
     }
 
     @Test func storeSaveFailureShowsErrorAndKeepsInput() async {

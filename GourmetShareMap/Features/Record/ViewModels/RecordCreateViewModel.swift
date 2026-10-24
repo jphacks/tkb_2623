@@ -5,6 +5,7 @@
 
 import CoreLocation
 import Observation
+import UIKit
 
 @Observable
 final class RecordCreateViewModel {
@@ -33,8 +34,32 @@ final class RecordCreateViewModel {
         case idle
         case saving
         /// 記録は保存できたが、一部の写真のアップロードに失敗した。
-        case partiallyFailed(storeID: UUID, failedPhotos: [RecordPhoto])
+        case partiallyFailed(store: StoreRecord, failedPhotos: [RecordPhoto])
         case failed(message: String)
+    }
+
+    /// 保存に必須の入力項目（メモ以外）。
+    enum Field: CaseIterable {
+        case photos, store, category, rating
+
+        var errorMessage: String {
+            switch self {
+            case .photos: "写真を1枚以上追加してください"
+            case .store: "お店を選択してください"
+            case .category: "カテゴリを選択してください"
+            case .rating: "評価を選択してください"
+            }
+        }
+    }
+
+    /// 保存完了画面に出す内容。
+    struct SavedSummary: Equatable {
+        let storeName: String
+        let category: String?
+        let rating: Int
+        let repeatNum: Int
+        let photoCount: Int
+        let coverImage: UIImage?
     }
 
     /// カテゴリの選択肢（`PlaceCategoryClassifier` の分類名）。
@@ -52,8 +77,10 @@ final class RecordCreateViewModel {
     var memo = ""
 
     private(set) var saveState: SaveState = .idle
-    /// 保存完了のお知らせ表示用。表示したら View 側で nil に戻す。
-    var savedMessage: String?
+    /// 保存ボタンを押した後だけ、未入力の項目をエラー表示する。
+    private(set) var showsValidationErrors = false
+    /// 保存完了画面の表示用。閉じたら View 側で nil に戻す。
+    var savedSummary: SavedSummary?
 
     private(set) var searchState: SearchState = .idle
     /// 直近の検索で使った座標。候補との距離表示に使う。
@@ -85,11 +112,30 @@ final class RecordCreateViewModel {
         SearchKey(origin: searchOrigin, attempt: attempt)
     }
 
+    /// 未入力の必須項目。
+    var missingFields: [Field] {
+        Field.allCases.filter { field in
+            switch field {
+            case .photos: photos.isEmpty
+            case .store: selectedCandidate == nil
+            // お店が未選択のときはお店のエラーだけ出す。
+            case .category: selectedCandidate != nil && category == nil
+            case .rating: rating == 0
+            }
+        }
+    }
+
+    /// 保存ボタンを押した後に表示する、その項目のエラー。
+    func errorMessage(for field: Field) -> String? {
+        showsValidationErrors && missingFields.contains(field) ? field.errorMessage : nil
+    }
+
+    /// 保存ボタンを押せるか（保存中・写真の再送待ちでないか）。未入力の項目があっても押せ、押すとエラーを表示する。
     var canSave: Bool {
-        guard !photos.isEmpty, selectedCandidate != nil, category != nil else { return false }
-        if case .idle = saveState { return true }
-        if case .failed = saveState { return true }
-        return false
+        switch saveState {
+        case .idle, .failed: true
+        case .saving, .partiallyFailed: false
+        }
     }
 
     var isSaving: Bool {
@@ -138,13 +184,19 @@ final class RecordCreateViewModel {
         }
     }
 
-    func save(to recordStore: RecordStore) async {
-        guard canSave, let shop = selectedCandidate, let category else { return }
+    /// 保存する。未入力の必須項目があればエラーを表示して false を返す。
+    @discardableResult
+    func save(to recordStore: RecordStore) async -> Bool {
+        guard canSave else { return false }
+        guard missingFields.isEmpty, let shop = selectedCandidate, let category else {
+            showsValidationErrors = true
+            return false
+        }
         let trimmedMemo = memo.trimmingCharacters(in: .whitespacesAndNewlines)
         let draft = RecordDraft(
             shop: shop,
             category: category,
-            reputation: rating == 0 ? nil : rating,
+            reputation: rating,
             memo: trimmedMemo.isEmpty ? nil : trimmedMemo,
             photos: photos
         )
@@ -153,35 +205,45 @@ final class RecordCreateViewModel {
         do {
             let result = try await recordStore.save(draft)
             if result.failedPhotos.isEmpty {
-                finishSaving(storeName: result.store.name)
+                finishSaving(store: result.store, failedCount: 0)
             } else {
-                saveState = .partiallyFailed(storeID: result.store.id, failedPhotos: result.failedPhotos)
+                saveState = .partiallyFailed(store: result.store, failedPhotos: result.failedPhotos)
             }
         } catch {
             saveState = .failed(message: "保存できませんでした: \(error.localizedDescription)")
         }
+        return true
     }
 
     /// アップロードに失敗した写真だけを再送する。
     func retryFailedUploads(to recordStore: RecordStore) async {
-        guard case let .partiallyFailed(storeID, failedPhotos) = saveState, let shop = selectedCandidate else { return }
+        guard case let .partiallyFailed(store, failedPhotos) = saveState else { return }
         saveState = .saving
-        let stillFailed = await recordStore.retryUpload(failedPhotos, storeID: storeID)
+        let stillFailed = await recordStore.retryUpload(failedPhotos, storeID: store.id)
         if stillFailed.isEmpty {
-            finishSaving(storeName: shop.name)
+            finishSaving(store: store, failedCount: 0)
         } else {
-            saveState = .partiallyFailed(storeID: storeID, failedPhotos: stillFailed)
+            saveState = .partiallyFailed(store: store, failedPhotos: stillFailed)
         }
     }
 
     /// 写真の再送をあきらめて、記録だけ残した状態で終える。
     func discardFailedUploads() {
-        finishSaving(storeName: selectedCandidate?.name ?? "")
+        guard case let .partiallyFailed(store, failedPhotos) = saveState else { return }
+        finishSaving(store: store, failedCount: failedPhotos.count)
     }
 
-    private func finishSaving(storeName: String) {
+    private func finishSaving(store: StoreRecord, failedCount: Int) {
+        let summary = SavedSummary(
+            storeName: store.name,
+            category: store.category,
+            rating: rating,
+            repeatNum: store.repeatNum,
+            photoCount: photos.count - failedCount,
+            coverImage: photos.first?.image
+        )
         reset()
-        savedMessage = "「\(storeName)」を記録しました"
+        savedSummary = summary
     }
 
     /// 入力をすべて初期状態に戻す。
@@ -192,6 +254,7 @@ final class RecordCreateViewModel {
         rating = 0
         memo = ""
         saveState = .idle
+        showsValidationErrors = false
         searchState = .idle
         searchedCoordinate = nil
     }

@@ -10,62 +10,85 @@ struct RecordCreateView: View {
     @State private var viewModel = RecordCreateViewModel()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("03 店舗登録")
-                    .font(.system(size: 20, weight: .bold))
-                    .padding(.top, 8)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    Text("03 店舗登録")
+                        .font(.system(size: 20, weight: .bold))
+                        .padding(.top, 8)
 
-                PhotoGridEditor(photos: $viewModel.photos)
+                    VStack(alignment: .leading, spacing: 8) {
+                        PhotoGridEditor(photos: $viewModel.photos)
+                        fieldError(.photos)
+                    }
+                    .id(RecordCreateViewModel.Field.photos)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    candidateHeader
-                    StoreCandidatePicker(
-                        state: viewModel.searchState,
-                        searchedCoordinate: viewModel.searchedCoordinate,
-                        selection: $viewModel.selectedCandidate,
-                        onRetry: viewModel.retrySearch
-                    )
+                    VStack(alignment: .leading, spacing: 8) {
+                        candidateHeader
+                        StoreCandidatePicker(
+                            state: viewModel.searchState,
+                            searchedCoordinate: viewModel.searchedCoordinate,
+                            selection: $viewModel.selectedCandidate,
+                            onRetry: viewModel.retrySearch
+                        )
+                        fieldError(.store)
+                    }
+                    .id(RecordCreateViewModel.Field.store)
+
+                    if viewModel.selectedCandidate != nil {
+                        categorySection
+                            .id(RecordCreateViewModel.Field.category)
+                    }
+
+                    section("評価") {
+                        StarRatingInput(rating: $viewModel.rating)
+                        fieldError(.rating)
+                    }
+                    .id(RecordCreateViewModel.Field.rating)
+
+                    section("メモ（任意）") {
+                        TextField("味や雰囲気などを自由に", text: $viewModel.memo, axis: .vertical)
+                            .lineLimit(3...6)
+                            .padding(12)
+                            .cardBackground(cornerRadius: 12)
+                    }
+
+                    saveFooter { firstMissing in
+                        withAnimation(.snappy) { proxy.scrollTo(firstMissing, anchor: .top) }
+                    }
                 }
-
-                if viewModel.selectedCandidate != nil {
-                    categorySection
-                }
-
-                section("評価") {
-                    StarRatingInput(rating: $viewModel.rating)
-                }
-
-                section("メモ") {
-                    TextField("味や雰囲気などを自由に", text: $viewModel.memo, axis: .vertical)
-                        .lineLimit(3...6)
-                        .padding(12)
-                        .cardBackground(cornerRadius: 12)
-                }
-
-                saveFooter
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
+                // 保存中は入力を変更できないようにする。
+                .disabled(viewModel.isSaving)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
-            // 保存中は入力を変更できないようにする。
-            .disabled(viewModel.isSaving)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .scrollDismissesKeyboard(.interactively)
         .foregroundStyle(.appText)
         .background(.appBackground)
-        .overlay(alignment: .top) {
-            if let message = viewModel.savedMessage {
-                savedBanner(message)
+        .overlay {
+            if let summary = viewModel.savedSummary {
+                RecordSavedView(summary: summary) {
+                    withAnimation(.snappy) { viewModel.savedSummary = nil }
+                }
+                .transition(.opacity)
             }
         }
-        .sensoryFeedback(.success, trigger: viewModel.savedMessage) { _, new in new != nil }
+        .animation(.snappy, value: viewModel.savedSummary)
+        .sensoryFeedback(.success, trigger: viewModel.savedSummary) { _, new in new != nil }
+        .sensoryFeedback(.error, trigger: viewModel.showsValidationErrors) { _, new in new }
         .task(id: viewModel.searchKey) {
             await viewModel.search(for: viewModel.searchKey.origin)
         }
-        .task(id: viewModel.savedMessage) {
-            guard viewModel.savedMessage != nil else { return }
-            try? await Task.sleep(for: .seconds(2.5))
-            withAnimation(.snappy) { viewModel.savedMessage = nil }
+    }
+
+    /// 保存ボタンを押した後、未入力の項目の下に出すエラー。
+    @ViewBuilder
+    private func fieldError(_ field: RecordCreateViewModel.Field) -> some View {
+        if let message = viewModel.errorMessage(for: field) {
+            Label(message, systemImage: "exclamationmark.circle.fill")
+                .font(.caption.bold())
+                .foregroundStyle(.red)
         }
     }
 
@@ -86,6 +109,8 @@ struct RecordCreateView: View {
                 .padding(.vertical, 4)
                 .cardBackground(cornerRadius: 12)
 
+                fieldError(.category)
+
                 if let shop = viewModel.selectedCandidate,
                    let existing = recordStore.existingRecord(forPlaceID: shop.placeID) {
                     Label("記録済みのお店です。\(existing.repeatNum + 1)回目の訪問として記録を更新します", systemImage: "arrow.trianglehead.2.clockwise")
@@ -99,7 +124,7 @@ struct RecordCreateView: View {
     // MARK: - Save
 
     @ViewBuilder
-    private var saveFooter: some View {
+    private func saveFooter(scrollToField: @escaping (RecordCreateViewModel.Field) -> Void) -> some View {
         switch viewModel.saveState {
         case let .partiallyFailed(_, failedPhotos):
             VStack(spacing: 12) {
@@ -119,6 +144,12 @@ struct RecordCreateView: View {
             .cardBackground()
         default:
             VStack(spacing: 8) {
+                if viewModel.showsValidationErrors, !viewModel.missingFields.isEmpty {
+                    Label("未入力の項目があります（メモ以外は必須です）", systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote.bold())
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 if case let .failed(message) = viewModel.saveState {
                     Text(message)
                         .font(.footnote)
@@ -126,12 +157,16 @@ struct RecordCreateView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Button {
-                    Task { await viewModel.save(to: recordStore) }
+                    Task {
+                        let didStart = await viewModel.save(to: recordStore)
+                        if !didStart, let firstMissing = viewModel.missingFields.first {
+                            scrollToField(firstMissing)
+                        }
+                    }
                 } label: {
                     primaryButtonLabel("記録を保存")
                 }
                 .disabled(!viewModel.canSave)
-                .opacity(viewModel.canSave || viewModel.isSaving ? 1 : 0.4)
             }
         }
     }
@@ -148,18 +183,6 @@ struct RecordCreateView: View {
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, minHeight: 52)
         .background(.appPrimary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private func savedBanner(_ message: String) -> some View {
-        Label(message, systemImage: "checkmark.circle.fill")
-            .font(.subheadline.bold())
-            .foregroundStyle(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(.appPrimary, in: Capsule())
-            .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
-            .padding(.top, 8)
-            .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     private var candidateHeader: some View {
