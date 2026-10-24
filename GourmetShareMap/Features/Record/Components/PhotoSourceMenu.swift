@@ -26,8 +26,8 @@ struct PhotoSourceMenuItems: View {
     let onSelectLibrary: () -> Void
 
     var body: some View {
+        // カメラがない端末でも、カメラ画面の左下からライブラリを選べるので無効にしない。
         Button("カメラ", systemImage: "camera.fill", action: onSelectCamera)
-            .disabled(!CameraPicker.isAvailable)
         Button("写真を選択", systemImage: "photo.on.rectangle", action: onSelectLibrary)
     }
 }

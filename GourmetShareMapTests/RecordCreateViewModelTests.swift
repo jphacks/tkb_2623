@@ -49,6 +49,13 @@ struct RecordCreateViewModelTests {
         #expect(viewModel.selectedCandidate == nil)
     }
 
+    @Test func addPhotosStopsAtMaxCount() {
+        let viewModel = RecordCreateViewModel(storeSearchService: MockStoreSearchService())
+        viewModel.addPhotos((0..<8).map { _ in RecordTestData.photo() })
+        viewModel.addPhotos((0..<5).map { _ in RecordTestData.photo() })
+        #expect(viewModel.photos.count == RecordCreateViewModel.maxPhotoCount)
+    }
+
     @Test func photoWithoutLocationFallsBackToCurrentLocation() {
         let viewModel = RecordCreateViewModel(storeSearchService: MockStoreSearchService())
         viewModel.photos = [RecordPhoto(image: UIImage(), location: nil, takenAt: nil)]
