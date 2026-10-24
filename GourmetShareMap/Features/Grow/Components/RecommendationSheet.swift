@@ -72,10 +72,27 @@ struct RecommendationSheet: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(.appText.opacity(0.65))
                 .multilineTextAlignment(.center)
+
+            if let mapsURL = recommendation.mapsURL {
+                Link(destination: mapsURL) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "map")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Google Mapsで見る")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(.appPrimary)
+                }
+                .padding(.top, 2)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity)
         .background(.appCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(.appBorder, lineWidth: 1)
+        }
     }
 }
 

@@ -16,6 +16,19 @@ struct Recommendation: Identifiable, Equatable, Sendable {
     let reason: String
 
     var id: String { placeID }
+
+    /// Google Mapsでこの店を開くURL。`query_place_id`を指定しているので、
+    /// 同名の別店舗と混同されず常にこの店舗が開く。
+    /// https://developers.google.com/maps/documentation/urls/get-started
+    var mapsURL: URL? {
+        var components = URLComponents(string: "https://www.google.com/maps/search/")
+        components?.queryItems = [
+            URLQueryItem(name: "api", value: "1"),
+            URLQueryItem(name: "query", value: name),
+            URLQueryItem(name: "query_place_id", value: placeID),
+        ]
+        return components?.url
+    }
 }
 
 /// 学習済みモデルの状態。
