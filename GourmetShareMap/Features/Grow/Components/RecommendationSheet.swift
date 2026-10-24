@@ -6,9 +6,9 @@
 import SwiftUI
 
 /// レコメンド結果。まんぷく先生が薦めた上位3件を、予測評価と理由つきで出す。
+/// 下にスワイプすれば閉じられる標準のシート動作に任せるため、専用の閉じるボタンは置かない。
 struct RecommendationSheet: View {
     let recommendations: [Recommendation]
-    var onClose: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,20 +29,8 @@ struct RecommendationSheet: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
-                .padding(.bottom, 8)
+                .padding(.bottom, 24)
             }
-
-            Button(action: onClose) {
-                Text("閉じる")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .background(.appPrimary, in: Capsule())
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
-            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.appBackground)

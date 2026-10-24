@@ -41,9 +41,7 @@ struct GrowView: View {
         // 表示時と、記録を登録・更新したあとにモデルの状態を取り直す。
         .task(id: recordStore.records) { await viewModel.loadStats(records: recordStore.records) }
         .sheet(isPresented: recommendationSheetBinding) {
-            RecommendationSheet(recommendations: viewModel.recommendations) {
-                viewModel.dismissRecommendations()
-            }
+            RecommendationSheet(recommendations: viewModel.recommendations)
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
