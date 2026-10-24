@@ -5,6 +5,7 @@
 
 import CoreLocation
 import Testing
+import UIKit
 @testable import GourmetShareMap
 
 @MainActor
@@ -36,8 +37,21 @@ struct RecordViewModelTests {
         #expect(!viewModel.canSave)
     }
 
-    @Test func searchOriginFallsBackToCurrentLocationWithoutPhotos() {
+    @Test func doesNotSearchUntilPhotoIsAdded() async {
         let viewModel = RecordViewModel(storeSearchService: MockStoreSearchService())
+        #expect(viewModel.searchOrigin == nil)
+
+        await viewModel.search(for: viewModel.searchOrigin)
+        guard case .idle = viewModel.searchState else {
+            Issue.record("写真がないうちは検索せず idle のままのはず")
+            return
+        }
+        #expect(viewModel.selectedCandidate == nil)
+    }
+
+    @Test func photoWithoutLocationFallsBackToCurrentLocation() {
+        let viewModel = RecordViewModel(storeSearchService: MockStoreSearchService())
+        viewModel.photos = [RecordPhoto(image: UIImage(), location: nil, takenAt: nil)]
         #expect(viewModel.searchOrigin == .currentLocation)
     }
 }

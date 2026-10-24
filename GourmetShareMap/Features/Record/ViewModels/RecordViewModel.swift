@@ -25,7 +25,7 @@ final class RecordViewModel {
 
     /// `.task(id:)` に渡すキー。位置が変わるか再検索が押されると検索し直す。
     struct SearchKey: Hashable {
-        let origin: SearchOrigin
+        let origin: SearchOrigin?
         let attempt: Int
     }
 
@@ -51,7 +51,9 @@ final class RecordViewModel {
     }
 
     /// 並び順で最初に見つかった、位置情報付きの写真の撮影位置を使う（表紙を優先）。なければ現在地。
-    var searchOrigin: SearchOrigin {
+    /// 写真が 1 枚もないうちは検索しない（nil）。
+    var searchOrigin: SearchOrigin? {
+        guard !photos.isEmpty else { return nil }
         guard let photo = photos.first(where: { $0.location != nil }), let location = photo.location else {
             return .currentLocation
         }
@@ -70,7 +72,14 @@ final class RecordViewModel {
         attempt += 1
     }
 
-    func search(for origin: SearchOrigin) async {
+    func search(for origin: SearchOrigin?) async {
+        guard let origin else {
+            // 写真がすべて削除されたら候補もリセットする。
+            searchState = .idle
+            searchedCoordinate = nil
+            selectedCandidate = nil
+            return
+        }
         searchState = .searching
         do {
             let coordinate: CLLocationCoordinate2D

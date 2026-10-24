@@ -18,7 +18,19 @@ struct StoreCandidatePicker: View {
 
     var body: some View {
         switch state {
-        case .idle, .searching:
+        case .idle:
+            messageCard {
+                VStack(spacing: 8) {
+                    Image(systemName: "photo.badge.plus")
+                        .font(.title2)
+                        .foregroundStyle(.appText.opacity(0.5))
+                    Text("写真を追加すると、近くのお店が候補に表示されます")
+                        .font(.subheadline)
+                        .foregroundStyle(.appText.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                }
+            }
+        case .searching:
             messageCard {
                 HStack(spacing: 10) {
                     ProgressView()

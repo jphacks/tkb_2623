@@ -62,6 +62,8 @@ struct RecordView: View {
     private var candidateHeader: some View {
         HStack(alignment: .firstTextBaseline) {
             switch viewModel.searchOrigin {
+            case nil:
+                Label("お店の候補", systemImage: "fork.knife")
             case .currentLocation:
                 Label("現在地からの候補", systemImage: "location.fill")
             case .photo(_, _, let takenAt):
