@@ -28,7 +28,7 @@ description: Implements a single, well-scoped development task for the GourmetSh
 - 指示されたタスクの範囲のみを実装する。既存のコード規約(ディレクトリ構成・命名・SwiftUIのスタイル)に合わせる。
 - 実装方法に迷ったら憶測で進めず、公式ドキュメント・Best Practiceを調査する。
 - **仕様・要件が曖昧でこちらの判断では決められない点(実装方法ではなく「何を作るべきか」に関わる疑問)があれば、絶対に憶測で決めずに実装を一旦止め、具体的な質問を箇条書きにしてオーケストレーターに報告してください。** オーケストレーターが開発者に確認し、回答とともにあなたを再開させます。回答を受け取ったら続きを実装してください。
-- 可能であれば `xcodebuild` でビルドが通ることを確認する。
+- 可能であれば `xcodebuild` でビルドが通ることを確認する。その際は必ず `-derivedDataPath ~/Library/Developer/Xcode/DerivedData/GourmetShareMap-Shared`(全Worktree共通の固定パス)を明示的に指定すること。Worktree内の相対パス等、Worktreeごとに異なるパスを指定すると、Supabase/swift-crypto等のSPM依存を毎回フルビルドし直すことになり非常に遅くなる(詳細は `CLAUDE.md` のDerivedData共有セクション参照)。
 - 実装がタスクの完了条件を満たしたら、わかりやすい日本語のコミットメッセージでコミットする(pushはまだしない)。
 
 ## 3. 開発者確認の依頼

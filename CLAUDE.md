@@ -21,6 +21,20 @@
 5. 開発者からOKが出たら、ブランチのpushとPR作成について確認を取ってから実行する。
 6. PRがマージされたら、該当Worktreeを削除する(`ExitWorktree({ action: "remove" })`)。
 
+### DerivedDataはWorktree間で共有する(xcodebuild実行時は必須)
+
+Supabase SDKはswift-crypto(BoringSSLを含む)など重いSPM依存を抱えており、Worktreeごとに独立したDerivedDataでビルドすると、新しいWorktreeの初回ビルドで毎回これらをフルビルドし直し数分かかる。これを避けるため、Worktree内で `xcodebuild` を実行する際は必ず固定の共有パスを明示指定する:
+
+```bash
+xcodebuild build -project GourmetShareMap.xcodeproj -scheme GourmetShareMap \
+  -destination 'platform=iOS Simulator,name=<シミュレータ名>' \
+  -derivedDataPath ~/Library/Developer/Xcode/DerivedData/GourmetShareMap-Shared
+```
+
+**検証済みの効果:** このパスを固定して複数Worktreeから使うと、Supabase/swift-crypto等の依存のコンパイル結果が再利用され、新しいWorktreeでの初回ビルドが約2分→約1分に短縮される(実測)。Worktree内の相対パス(例: `DerivedData`)など、Worktreeごとに異なるパスを `-derivedDataPath` に指定しないこと。
+
+**既知の制限:** `GourmetShareMap.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings` にも同じ共有パスを設定してあるが、これは `xcodebuild` コマンドラインからは無視されることを確認済み(Appleの既知の制限)。Xcode GUIの▶ボタンでの動作確認では、この設定が効くかはWorktreeごとに保証されない。開発者がXcodeの▶ボタンでも初回ビルドを速くしたい場合は、Xcodeで `File > Workspace Settings...` を開き、Derived Dataの場所を上記と同じ絶対パスに手動で揃えることで同様の効果が期待できる(未検証)。
+
 ## 実装方針
 
 - 実装に使用するライブラリ・API・フレームワークは、できるだけ最新の実装・最新バージョンを採用する。非推奨 (deprecated) な方法は避ける。

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C32143AC308C91860081B162 /* GoogleMaps in Frameworks */ = {isa = PBXBuildFile; productRef = C32143AB308C91860081B162 /* GoogleMaps */; };
 		C348470A3088EB9600153DB9 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = C34847093088EB9600153DB9 /* Supabase */; };
 /* End PBXBuildFile section */
 
@@ -87,6 +88,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C348470A3088EB9600153DB9 /* Supabase in Frameworks */,
+				C32143AC308C91860081B162 /* GoogleMaps in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -156,6 +158,7 @@
 			name = GourmetShareMap;
 			packageProductDependencies = (
 				C34847093088EB9600153DB9 /* Supabase */,
+				C32143AB308C91860081B162 /* GoogleMaps */,
 			);
 			productName = GourmetShareMap;
 			productReference = C34842613088C86F00153DB9 /* GourmetShareMap.app */;
@@ -241,6 +244,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				C34847073088EB1200153DB9 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				C32143AA308C91860081B162 /* XCRemoteSwiftPackageReference "ios-maps-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C34842623088C86F00153DB9 /* Products */;
@@ -448,6 +452,10 @@
 				DEVELOPMENT_TEAM = Z27QT2L226;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "お店で食べたご飯を撮影して記録するためにカメラを使用します。";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "現在地の近くにあるお店の候補を表示し、マップに現在地を表示するために位置情報を使用します。";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "記録に添付する写真を選択し、撮影場所からお店の候補を探すために写真を使用します。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -481,6 +489,10 @@
 				DEVELOPMENT_TEAM = Z27QT2L226;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "お店で食べたご飯を撮影して記録するためにカメラを使用します。";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "現在地の近くにあるお店の候補を表示し、マップに現在地を表示するために位置情報を使用します。";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "記録に添付する写真を選択し、撮影場所からお店の候補を探すために写真を使用します。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -629,6 +641,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		C32143AA308C91860081B162 /* XCRemoteSwiftPackageReference "ios-maps-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/googlemaps/ios-maps-sdk";
+			requirement = {
+				kind = exactVersion;
+				version = 11.2.0;
+			};
+		};
 		C34847073088EB1200153DB9 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/supabase/supabase-swift";
@@ -640,6 +660,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		C32143AB308C91860081B162 /* GoogleMaps */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C32143AA308C91860081B162 /* XCRemoteSwiftPackageReference "ios-maps-sdk" */;
+			productName = GoogleMaps;
+		};
 		C34847093088EB9600153DB9 /* Supabase */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = C34847073088EB1200153DB9 /* XCRemoteSwiftPackageReference "supabase-swift" */;
