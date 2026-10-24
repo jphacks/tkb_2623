@@ -33,6 +33,8 @@ struct GrowView: View {
                 .padding(.top, 14)
                 .padding(.bottom, 28)
             }
+            // 下にスワイプすればキーボードを閉じられる（下の「閉じる」ボタンと合わせて二重の導線）。
+            .scrollDismissesKeyboard(.interactively)
         }
         .background(.appBackground)
         // 表示時と、記録を登録・更新したあとにモデルの状態を取り直す。
@@ -40,6 +42,13 @@ struct GrowView: View {
         .sheet(isPresented: recommendationSheetBinding) {
             RecommendationSheet(recommendations: viewModel.recommendations) {
                 viewModel.dismissRecommendations()
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("閉じる") { isFreeTextFocused = false }
+                    .font(.system(size: 15, weight: .bold))
             }
         }
     }
