@@ -35,6 +35,25 @@ final class RecordRepository {
         self.init(client: SupabaseManager.shared.client)
     }
 
+    /// マップ・プロフィール共通の、自分の店舗記録一覧。座標がNULLの行も返す。
+    /// created_at降順・id昇順。Supabase標準の最大返却件数に合わせてページ取得する。
+    func fetchStores() async throws -> [StoreRecord] {
+        let userID = try await client.auth.session.user.id
+        let pageSize = 1000
+        var records: [StoreRecord] = []
+        while true {
+            let page: [StoreRecord] = try await client.from("store")
+                .select()
+                .eq("user_id", value: userID)
+                .order("created_at", ascending: false)
+                .order("id", ascending: true)
+                .range(from: records.count, to: records.count + pageSize - 1)
+                .execute().value
+            records.append(contentsOf: page)
+            if page.count < pageSize { return records }
+        }
+    }
+
     /// 自分の店舗記録を登録・更新し、DBが返す保存結果を返す。
     /// 入力は全体を上書きする。認証・通信・DB・デコードエラーは呼び出し元へ伝える。
     func saveStore(_ input: StoreSaveInput) async throws -> StoreRecord {
