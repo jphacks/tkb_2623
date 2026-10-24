@@ -1,7 +1,7 @@
 import Foundation
 
 // アプリとCLIテストで共有する日本語カテゴリの判定。
-enum ShopCategory {
+enum PlaceCategoryClassifier {
     // 順序はtypesが複数カテゴリに一致した場合の優先順位。「その他」は最後。
     static let categoryRules: [(name: String, types: Set<String>)] = [
         ("和食", "japanese_restaurant sushi_restaurant tonkatsu_restaurant yakitori_restaurant seafood_restaurant hot_pot_restaurant"),

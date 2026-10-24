@@ -14,7 +14,7 @@ Swift環境で、リポジトリのルートから実行します。
 ```bash
 swiftc -D PLACES_API_CLI -parse-as-library \
   GourmetShareMap/Services/Places/GoogleMapConfig.swift \
-  GourmetShareMap/Services/Places/ShopCategory.swift \
+  GourmetShareMap/Services/Places/PlaceCategoryClassifier.swift \
   GourmetShareMap/Services/Places/FindNearestShop.swift \
   GourmetShareMap/Services/Places/PlacesAPITest.swift \
   -o /tmp/PlacesAPITest &&
@@ -26,7 +26,7 @@ swiftc -D PLACES_API_CLI -parse-as-library \
 Swift環境で、リポジトリのルートから実行します。
 
 ```powershell
-swiftc -D PLACES_API_CLI -parse-as-library .\GourmetShareMap\Services\Places\GoogleMapConfig.swift .\GourmetShareMap\Services\Places\ShopCategory.swift .\GourmetShareMap\Services\Places\FindNearestShop.swift .\GourmetShareMap\Services\Places\PlacesAPITest.swift -o "$env:TEMP\PlacesAPITest.exe"
+swiftc -D PLACES_API_CLI -parse-as-library .\GourmetShareMap\Services\Places\GoogleMapConfig.swift .\GourmetShareMap\Services\Places\PlaceCategoryClassifier.swift .\GourmetShareMap\Services\Places\FindNearestShop.swift .\GourmetShareMap\Services\Places\PlacesAPITest.swift -o "$env:TEMP\PlacesAPITest.exe"
 if ($LASTEXITCODE -eq 0) {
     & "$env:TEMP\PlacesAPITest.exe" 35.713329 139.7617112
 }
@@ -44,7 +44,7 @@ if ($LASTEXITCODE -eq 0) {
 - `longitude: Double`
 - `category: String`（日本語）
 
-カテゴリは `ShopCategory.swift` の13分類に従い、具体的な `primaryType` を優先し、
+カテゴリは `PlaceCategoryClassifier.swift` の13分類に従い、具体的な `primaryType` を優先し、
 該当しなければ `types` を提示順に照合します。未分類は「その他」です。
 
 APIキーを変更したら再コンパイルしてください。キーを含む実行ファイルは共有しないでください。

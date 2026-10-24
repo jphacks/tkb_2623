@@ -99,7 +99,7 @@ enum NearbyShopClient {
                 name: place.displayName.text,
                 latitude: place.location.latitude,
                 longitude: place.location.longitude,
-                category: ShopCategory.category(primaryType: place.primaryType, types: place.types ?? [])
+                category: PlaceCategoryClassifier.category(primaryType: place.primaryType, types: place.types ?? [])
             )
         }
     }
