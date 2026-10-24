@@ -154,12 +154,20 @@ def _expanding_features(user_records: list[dict], embeddings: dict) -> tuple[pd.
     return pd.DataFrame(X).fillna(0), y
 
 
+MAX_LOOCV_FOLDS = 15  # LOOCVはO(N^2)なので、登録件数が多いユーザーでも遅くならないよう評価対象を絞る
+
+
 def _loocv_mean_abs_error(user_records: list[dict], embeddings: dict) -> float | None:
-    """5-Foldは1人あたりのデータが少ないと不安定なため、LOOCVで評価する。"""
+    """5-Foldは1人あたりのデータが少ないと不安定なため、LOOCVで評価する。
+    学習に使う履歴自体は絞らず、評価(held-out)対象だけ直近MAX_LOOCV_FOLDS件に絞る。
+    """
     if len(user_records) < 3:
         return None
+    hold_out_indices = range(len(user_records))
+    if len(user_records) > MAX_LOOCV_FOLDS:
+        hold_out_indices = range(len(user_records) - MAX_LOOCV_FOLDS, len(user_records))
     errors = []
-    for i in range(len(user_records)):
+    for i in hold_out_indices:
         train_records = user_records[:i] + user_records[i + 1:]
         X_train, y_train = _expanding_features(train_records, embeddings)
         held_out = user_records[i]

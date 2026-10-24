@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import time
 from threading import Lock
 from typing import Any
 
@@ -77,16 +78,29 @@ def recommend_endpoint(body: RecommendRequest):
     """
     if len(body.history) < MIN_RECORDS:
         raise HTTPException(400, f"need >={MIN_RECORDS} registered stores before recommendations")
+
+    # 原因不明の遅延(同じ件数でも呼ぶたびに遅くなる)を調査するための一時的な計測ログ。
+    t0 = time.monotonic()
     try:
         model_stats = train_user(body.user_id, body.history)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    t1 = time.monotonic()
     conditions = extract_conditions(body.free_text)
+    t2 = time.monotonic()
     candidates = search_candidates(conditions, body.lat, body.lng)
+    t3 = time.monotonic()
+    print(
+        f"[timing] user={body.user_id} history={len(body.history)} "
+        f"train={t1 - t0:.1f}s gemini={t2 - t1:.1f}s places={t3 - t2:.1f}s",
+        flush=True,
+    )
     if not candidates:
         return {"predictions": [], "conditions": conditions, "model_stats": model_stats}
     try:
         predictions = predict_for_user(body.user_id, body.history, candidates)
     except FileNotFoundError as e:
         raise HTTPException(409, str(e))
+    t4 = time.monotonic()
+    print(f"[timing] user={body.user_id} predict={t4 - t3:.1f}s total={t4 - t0:.1f}s", flush=True)
     return {"predictions": predictions[:3], "conditions": conditions, "model_stats": model_stats}
