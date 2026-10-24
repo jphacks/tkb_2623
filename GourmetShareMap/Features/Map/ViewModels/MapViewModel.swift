@@ -7,7 +7,7 @@ import Combine
 import CoreGraphics
 import Foundation
 
-enum MapCategoryFilter: String, CaseIterable, Identifiable {
+enum ShopCategory: String, CaseIterable, Identifiable {
     case all = "すべて"
     case ramen = "ラーメン"
     case chinese = "中華"
@@ -62,7 +62,7 @@ struct MapShop: Identifiable {
 
 @MainActor
 final class MapViewModel: ObservableObject {
-    @Published var selectedCategory: MapCategoryFilter = .all
+    @Published var selectedCategory: ShopCategory = .all
     @Published var ownerFilter: OwnerFilter = .both
     @Published var selectedShopID: MapShop.ID?
 

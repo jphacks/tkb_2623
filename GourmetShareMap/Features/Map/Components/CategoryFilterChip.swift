@@ -5,7 +5,7 @@
 import SwiftUI
 
 struct CategoryFilterChip: View {
-    let category: MapCategoryFilter
+    let category: ShopCategory
     let isSelected: Bool
     let action: () -> Void
 

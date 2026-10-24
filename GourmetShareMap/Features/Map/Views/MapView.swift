@@ -40,7 +40,7 @@ struct MapView: View {
     private var categoryFilterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(MapCategoryFilter.allCases) { category in
+                ForEach(ShopCategory.allCases) { category in
                     CategoryFilterChip(category: category, isSelected: viewModel.selectedCategory == category) {
                         viewModel.selectedCategory = category
                     }

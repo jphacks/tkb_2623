@@ -29,7 +29,7 @@ extension NearbyShop: Identifiable {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
-    /// 候補リストで店舗アイコンとして使う画像（`ShopCategory` の分類名に対応。Assets.xcassets）。
+    /// 候補リストで店舗アイコンとして使う画像（`PlaceCategoryClassifier` の分類名に対応。Assets.xcassets）。
     /// 専用アイコンのないカテゴリ（中華・アジア・エスニック・その他）は `others` を使う。
     var iconImage: ImageResource {
         switch category {
