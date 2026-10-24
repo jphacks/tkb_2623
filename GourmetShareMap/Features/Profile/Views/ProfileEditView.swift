@@ -113,6 +113,7 @@ struct ProfileEditView: View {
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(.black.opacity(0.6))
             TextField("表示名を入力", text: $viewModel.name)
+                .foregroundStyle(.black)
                 .padding(12)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
@@ -125,6 +126,7 @@ struct ProfileEditView: View {
                 .foregroundStyle(.black.opacity(0.6))
             TextField("自己紹介を入力", text: $viewModel.bio, axis: .vertical)
                 .lineLimit(4...8)
+                .foregroundStyle(.black)
                 .padding(12)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
