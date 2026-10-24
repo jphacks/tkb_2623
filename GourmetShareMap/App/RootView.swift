@@ -15,24 +15,10 @@ struct RootView: View {
             } else if authViewModel.needsOnboarding {
                 OnboardingView()
             } else {
-                MainPlaceholderView()
+                MainTabView()
             }
         }
         .environmentObject(authViewModel)
-    }
-}
-
-// MainTabViewができたら差し替える。
-private struct MainPlaceholderView: View {
-    @EnvironmentObject private var authViewModel: AuthViewModel
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("メイン画面")
-            Button("ログアウト") {
-                Task { await authViewModel.signOut() }
-            }
-        }
     }
 }
 
