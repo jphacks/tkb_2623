@@ -31,6 +31,20 @@ final class ImageRepository {
         }
     }
 
+    /// 指定した店舗の画像一覧。created_at昇順・id昇順で、先頭が「最初の写真」になる。
+    /// フレンドの店舗でも使うため`requireOwnedStore`は呼ばない。
+    /// 本人・フレンドの行だけが返ることは`image`のSELECT RLSポリシーが保証する。
+    /// 1店舗の画像は少数のためページ取得はしない。昇順で先頭から返るので、
+    /// 仮にSupabase標準の返却上限に達しても必要な先頭の行は欠けない。
+    func fetchImages(storeID: UUID) async throws -> [ImageRecord] {
+        _ = try await client.auth.session
+        return try await client.from("image").select()
+            .eq("store_id", value: storeID)
+            .order("created_at", ascending: true)
+            .order("id", ascending: true)
+            .execute().value
+    }
+
     /// 本人・フレンドの閲覧権限はDBとStorageの両方のRLSで検証される。
     func signedURL(imageID: UUID, expiresIn: Int = 3600) async throws -> URL {
         guard expiresIn > 0 else { throw ImageRepositoryError.invalidExpiration }
