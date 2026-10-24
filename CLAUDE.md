@@ -20,3 +20,8 @@
 4. 実装が完了したら `open <worktreeパス>/GourmetShareMap.xcodeproj` でXcodeを開き、開発者に▶ボタンで動作確認してもらう。
 5. 開発者からOKが出たら、ブランチのpushとPR作成について確認を取ってから実行する。
 6. PRがマージされたら、該当Worktreeを削除する(`ExitWorktree({ action: "remove" })`)。
+
+## 実装方針
+
+- 実装に使用するライブラリ・API・フレームワークは、できるだけ最新の実装・最新バージョンを採用する。非推奨 (deprecated) な方法は避ける。
+- 実装方法に迷った場合は、思い込みで進めず、公式ドキュメントやコミュニティの Best Practice を調査してから実装する。
