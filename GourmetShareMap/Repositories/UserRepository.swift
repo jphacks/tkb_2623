@@ -10,9 +10,15 @@ nonisolated enum UserRepositoryError: LocalizedError {
     case emptyData
     case invalidExpiration
     case cleanupFailed(path: String, updateError: any Error, cleanupError: any Error)
+    /// user_name が他のユーザーと重複している（DBの一意制約違反 23505）。
+    case userNameTaken
+    /// user_name が形式（英小文字・数字・_ の3〜20文字）を満たさない（DBの check 制約違反 23514）。
+    case invalidUserName
 
     var errorDescription: String? {
         switch self {
+        case .userNameTaken: return "このユーザー名は既に使われています。"
+        case .invalidUserName: return UserName.formatMessage
         case .emptyData: return "画像データが空です。"
         case .invalidExpiration: return "URLの有効期限は1秒以上で指定してください。"
         case let .cleanupFailed(path, updateError, cleanupError):
@@ -30,14 +36,14 @@ final class UserRepository {
         self.client = client
     }
 
-    /// ログイン中ユーザー自身のプロフィール（表示名・自己紹介・アイコン画像パス）を取得する。
+    /// ログイン中ユーザー自身のプロフィール（ユーザー名・表示名・自己紹介・アイコン画像パス）を取得する。
     /// user テーブルのRLS（auth.uid() = id の行のみ参照可）により、他ユーザーの行は取得できない。
     func fetchMyProfile() async throws -> UserProfile {
         let userId = try await client.auth.session.user.id
 
         return try await client
             .from("user")
-            .select("id, name, bio, profile_image")
+            .select("id, user_name, name, bio, profile_image")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -59,21 +65,34 @@ final class UserRepository {
         return response.count ?? 0
     }
 
-    /// ログイン中ユーザーの表示名・自己紹介を更新する。
+    /// ログイン中ユーザーの表示名・自己紹介・ユーザー名を更新する。
     /// nil を渡した項目は更新しない（JSON に含めないため既存値が残る）。
-    func updateMyProfile(name: String?, bio: String?) async throws {
+    /// user_name の重複・形式違反は UserRepositoryError に変換して throw する。
+    func updateMyProfile(name: String?, bio: String?, userName: String?) async throws {
         struct ProfileUpdate: Encodable {
             let name: String?
             let bio: String?
+            let userName: String?
+
+            enum CodingKeys: String, CodingKey {
+                case name, bio
+                case userName = "user_name"
+            }
         }
 
         let userId = try await client.auth.session.user.id
 
-        try await client
-            .from("user")
-            .update(ProfileUpdate(name: name, bio: bio))
-            .eq("id", value: userId)
-            .execute()
+        do {
+            try await client
+                .from("user")
+                .update(ProfileUpdate(name: name, bio: bio, userName: userName))
+                .eq("id", value: userId)
+                .execute()
+        } catch let error as PostgrestError where error.code == "23505" {
+            throw UserRepositoryError.userNameTaken
+        } catch let error as PostgrestError where error.code == "23514" {
+            throw UserRepositoryError.invalidUserName
+        }
     }
 
     /// user.profile_image にアイコン画像のパスを保存する。

@@ -7,10 +7,9 @@ import Combine
 import Foundation
 
 /// ProfileEditViewModelが依存する、自分のプロフィール読み込み・更新口。テストではフェイクに差し替える。
-/// user_nameの編集はスコープ外のため含めない。
 protocol ProfileEditDataSource {
     func fetchMyProfile() async throws -> UserProfile
-    func updateMyProfile(name: String?, bio: String?) async throws
+    func updateMyProfile(name: String?, bio: String?, userName: String?) async throws
     func uploadProfileImage(data: Data, format: RecordImageFormat) async throws -> String
     // プロトコル要件にデフォルト引数は書けないため、呼び出し側で明示的に指定する。
     func signedURL(path: String, expiresIn: Int) async throws -> URL
@@ -21,6 +20,13 @@ extension UserRepository: ProfileEditDataSource {}
 @MainActor
 final class ProfileEditViewModel: ObservableObject {
     @Published var name: String = ""
+    /// フレンド検索に使うユーザー名。大文字が入力されたら、その場で小文字に揃える。
+    @Published var userName: String = "" {
+        didSet {
+            let lowercased = userName.lowercased()
+            if lowercased != userName { userName = lowercased }
+        }
+    }
     @Published var bio: String = ""
     /// 保存済みの画像の表示用URL。新しい画像を選択しただけではここは更新されない
     /// （プレビューはpendingImageDataをViewがそのまま表示する想定）。
@@ -42,13 +48,14 @@ final class ProfileEditViewModel: ObservableObject {
         self.dataSource = dataSource ?? UserRepository()
     }
 
-    /// 現在のプロフィール（表示名・自己紹介・画像プレビュー）を読み込む。
+    /// 現在のプロフィール（ユーザー名・表示名・自己紹介・画像プレビュー）を読み込む。
     func load() async {
         isLoading = true
         errorMessage = nil
         do {
             let profile = try await dataSource.fetchMyProfile()
             name = profile.name ?? ""
+            userName = profile.userName ?? ""
             bio = profile.bio ?? ""
             await loadAvatarPreviewURL(path: profile.profileImage)
         } catch {
@@ -68,19 +75,29 @@ final class ProfileEditViewModel: ObservableObject {
         pendingImageData = nil
     }
 
-    /// 表示名・自己紹介を更新し、画像を選択していればアップロードして反映する。
+    /// 表示名・自己紹介・ユーザー名を更新し、画像を選択していればアップロードして反映する。
+    /// ユーザー名が形式を満たさない場合は、通信せずにエラーを表示する。
     /// uploadProfileImage(data:format:)は内部でuser.profile_imageの更新まで行うため、
     /// ここで別途updateMyProfileImageを呼ぶと二重更新になる（このViewModelはそのメソッドに
     /// 依存していないため、呼び出しようがない構成にしている）。
     func save() async {
-        isSaving = true
         errorMessage = nil
         didSaveSuccessfully = false
+
+        let normalizedUserName = UserName.normalize(userName)
+        guard UserName.isValid(normalizedUserName) else {
+            errorMessage = UserName.formatMessage
+            return
+        }
+
+        isSaving = true
         do {
             try await dataSource.updateMyProfile(
                 name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                bio: bio.trimmingCharacters(in: .whitespacesAndNewlines)
+                bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
+                userName: normalizedUserName
             )
+            userName = normalizedUserName
 
             if let pendingImageData {
                 let newPath = try await dataSource.uploadProfileImage(data: pendingImageData, format: pendingImageFormat)
