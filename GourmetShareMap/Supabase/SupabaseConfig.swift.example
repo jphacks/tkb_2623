@@ -1,0 +1,17 @@
+//
+//  SupabaseConfig.swift.example
+//  GourmetShareMap
+//
+//  このファイルを "SupabaseConfig.swift" としてコピーし、実際の値を入れてください。
+//  SupabaseConfig.swift は .gitignore で除外されているため、実際の値はコミットされません。
+//
+
+import Foundation
+
+enum SupabaseConfig {
+    // Supabaseダッシュボード > Project Settings > Data API で確認できる値に置き換えてください。
+    // url は一番上の「Project URL」を使うこと（末尾に /rest/v1/ などのパスを付けない）。
+    // 「REST API URL」欄の値をそのまま貼ると SDK 内部でパスが二重になり、ログインが404で失敗します。
+    static let url = URL(string: "https://YOUR_PROJECT_REF.supabase.co")!
+    static let anonKey = "YOUR_ANON_PUBLIC_KEY"
+}
