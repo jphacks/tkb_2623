@@ -7,7 +7,7 @@ import SwiftUI
 
 struct MainTabView: View {
     enum TabItem: Hashable {
-        case map, record, timeline, profile
+        case grow, map, record, timeline, profile
     }
 
     @State private var recordStore = RecordStore()
@@ -16,6 +16,10 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
+            Tab("育てる", systemImage: "sparkles", value: .grow) {
+                GrowView()
+            }
+
             Tab("マップ", systemImage: "map", value: .map) {
                 MapView()
             }
