@@ -8,6 +8,7 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @StateObject private var viewModel = ProfileViewModel()
+    @State private var isEditingProfile = false
 
     private let backgroundColor = Color(red: 0.984, green: 0.968, blue: 0.937)
     private let accentOrange = Color(red: 0.76, green: 0.35, blue: 0.22)
@@ -43,6 +44,13 @@ struct ProfileView: View {
         }
         .task {
             await viewModel.load()
+        }
+        .sheet(isPresented: $isEditingProfile, onDismiss: {
+            // 保存・キャンセルどちらで閉じても再読込する。キャンセル時はDBが変わっていないため、
+            // 結果的に表示内容は変わらない。
+            Task { await viewModel.load() }
+        }) {
+            ProfileEditView()
         }
     }
 
@@ -132,7 +140,7 @@ struct ProfileView: View {
             Spacer()
 
             Button {
-                // TODO: プロフィール編集画面ができたら遷移させる。
+                isEditingProfile = true
             } label: {
                 Label("編集", systemImage: "pencil")
                     .font(.system(size: 14, weight: .bold))
