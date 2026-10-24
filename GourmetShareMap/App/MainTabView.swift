@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @State private var recordStore = RecordStore()
     private let accentOrange = Color(red: 0.76, green: 0.35, blue: 0.22)
 
     var body: some View {
@@ -15,7 +16,7 @@ struct MainTabView: View {
                     Label("マップ", systemImage: "map")
                 }
 
-            RecordView()
+            RecordCreateView()
                 .tabItem {
                     Label("登録", systemImage: "plus")
                 }
@@ -26,6 +27,8 @@ struct MainTabView: View {
                 }
         }
         .tint(accentOrange)
+        .environment(recordStore)
+        .task { await recordStore.load() }
     }
 }
 

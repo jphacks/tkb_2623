@@ -1,5 +1,5 @@
 //
-//  RecordViewModel.swift
+//  RecordCreateViewModel.swift
 //  GourmetShareMap
 //
 
@@ -7,7 +7,7 @@ import CoreLocation
 import Observation
 
 @Observable
-final class RecordViewModel {
+final class RecordCreateViewModel {
     /// 店舗候補を検索する位置の決め方。
     enum SearchOrigin: Hashable {
         /// 写真の EXIF にある撮影位置
@@ -29,10 +29,31 @@ final class RecordViewModel {
         let attempt: Int
     }
 
+    enum SaveState {
+        case idle
+        case saving
+        /// 記録は保存できたが、一部の写真のアップロードに失敗した。
+        case partiallyFailed(storeID: UUID, failedPhotos: [RecordPhoto])
+        case failed(message: String)
+    }
+
+    /// カテゴリの選択肢（`PlaceCategoryClassifier` の分類名）。
+    static let categories = PlaceCategoryClassifier.categoryRules.map(\.name)
+
     var photos: [RecordPhoto] = []
-    var selectedCandidate: NearbyShop?
+    var selectedCandidate: NearbyShop? {
+        // 店を選び直したら、自動分類のカテゴリを初期値として入れ直す。
+        didSet {
+            if selectedCandidate != oldValue { category = selectedCandidate?.category }
+        }
+    }
+    var category: String?
     var rating = 0
     var memo = ""
+
+    private(set) var saveState: SaveState = .idle
+    /// 保存完了のお知らせ表示用。表示したら View 側で nil に戻す。
+    var savedMessage: String?
 
     private(set) var searchState: SearchState = .idle
     /// 直近の検索で使った座標。候補との距離表示に使う。
@@ -65,7 +86,15 @@ final class RecordViewModel {
     }
 
     var canSave: Bool {
-        !photos.isEmpty && selectedCandidate != nil
+        guard !photos.isEmpty, selectedCandidate != nil, category != nil else { return false }
+        if case .idle = saveState { return true }
+        if case .failed = saveState { return true }
+        return false
+    }
+
+    var isSaving: Bool {
+        if case .saving = saveState { return true }
+        return false
     }
 
     func retrySearch() {
@@ -109,7 +138,61 @@ final class RecordViewModel {
         }
     }
 
-    func save() {
-        // TODO: 保存処理（Storage への画像アップロード・store / image への insert）は別 PR で実装する。
+    func save(to recordStore: RecordStore) async {
+        guard canSave, let shop = selectedCandidate, let category else { return }
+        let trimmedMemo = memo.trimmingCharacters(in: .whitespacesAndNewlines)
+        let draft = RecordDraft(
+            shop: shop,
+            category: category,
+            reputation: rating == 0 ? nil : rating,
+            memo: trimmedMemo.isEmpty ? nil : trimmedMemo,
+            photos: photos
+        )
+
+        saveState = .saving
+        do {
+            let result = try await recordStore.save(draft)
+            if result.failedPhotos.isEmpty {
+                finishSaving(storeName: result.store.name)
+            } else {
+                saveState = .partiallyFailed(storeID: result.store.id, failedPhotos: result.failedPhotos)
+            }
+        } catch {
+            saveState = .failed(message: "保存できませんでした: \(error.localizedDescription)")
+        }
+    }
+
+    /// アップロードに失敗した写真だけを再送する。
+    func retryFailedUploads(to recordStore: RecordStore) async {
+        guard case let .partiallyFailed(storeID, failedPhotos) = saveState, let shop = selectedCandidate else { return }
+        saveState = .saving
+        let stillFailed = await recordStore.retryUpload(failedPhotos, storeID: storeID)
+        if stillFailed.isEmpty {
+            finishSaving(storeName: shop.name)
+        } else {
+            saveState = .partiallyFailed(storeID: storeID, failedPhotos: stillFailed)
+        }
+    }
+
+    /// 写真の再送をあきらめて、記録だけ残した状態で終える。
+    func discardFailedUploads() {
+        finishSaving(storeName: selectedCandidate?.name ?? "")
+    }
+
+    private func finishSaving(storeName: String) {
+        reset()
+        savedMessage = "「\(storeName)」を記録しました"
+    }
+
+    /// 入力をすべて初期状態に戻す。
+    func reset() {
+        photos = []
+        selectedCandidate = nil
+        category = nil
+        rating = 0
+        memo = ""
+        saveState = .idle
+        searchState = .idle
+        searchedCoordinate = nil
     }
 }

@@ -8,7 +8,7 @@ import SwiftUI
 
 /// 周辺店舗の候補から 1 件を選ぶドロップダウン。読み込み中・0 件・エラーの表示も持つ。
 struct StoreCandidatePicker: View {
-    let state: RecordViewModel.SearchState
+    let state: RecordCreateViewModel.SearchState
     let searchedCoordinate: CLLocationCoordinate2D?
     @Binding var selection: NearbyShop?
     let onRetry: () -> Void

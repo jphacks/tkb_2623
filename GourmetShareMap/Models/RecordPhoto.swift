@@ -40,6 +40,12 @@ extension RecordPhoto {
         return RecordPhoto(image: resized ?? image, location: nil, takenAt: .now)
     }
 
+    /// アップロード用の JPEG データ。エンコードはメインスレッドの外で行う。
+    @concurrent
+    func jpegData() async -> Data? {
+        image.jpegData(compressionQuality: 0.8)
+    }
+
     nonisolated private static func downsample(_ data: Data) -> UIImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let options: [CFString: Any] = [
