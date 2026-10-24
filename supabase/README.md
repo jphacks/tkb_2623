@@ -186,3 +186,12 @@ Xcodeでは既存RecordRepositoryTestsに追加した一覧テストも実行で
 - Swift 6.4.1 / Linux、Supabase SDK 2.55.4で通信モックテスト20件成功（既存保存15件＋一覧5件）。
 - PostgreSQL 17の一時DBで保存・一覧の所有者条件・並び順・RLSのSQLテスト成功。
 - 実Supabaseへの操作とiOSアプリ全体のビルドは未実行。
+
+### 統合時の確認
+
+最新mainと元のPR統合先 `feat/upload-shop-info` を取り込み、保存15件＋一覧5件のテストを保持しています。
+画像Repositoryの利用方法は [IMAGE_REPOSITORY.md](IMAGE_REPOSITORY.md) を参照してください。
+CLIの接続マネージャー差し替えは、mainで追加されたUserRepositoryからも参照できる構成にしています。
+
+統合後の通信モックテストは35件（保存15件・一覧5件・画像15件）すべて成功しました。
+一時PostgreSQLで保存・一覧・画像のSQL・RLS検証も成功しています。
