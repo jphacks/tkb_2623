@@ -7,7 +7,7 @@ import SwiftUI
 
 struct MainTabView: View {
     enum TabItem: Hashable {
-        case map, record, profile
+        case map, record, timeline, profile
     }
 
     @State private var recordStore = RecordStore()
@@ -22,6 +22,14 @@ struct MainTabView: View {
 
             Tab("登録", systemImage: "camera", value: .record) {
                 RecordCreateView(isActive: selectedTab == .record)
+            }
+
+            Tab("タイムライン", systemImage: "clock", value: .timeline) {
+                TimelineView(
+                    // TODO: フレンド検索画面ができたらそちらへ遷移させる。今はフレンド一覧の入口があるプロフィールへ移る。
+                    onFindFriends: { selectedTab = .profile },
+                    onCreateRecord: { selectedTab = .record }
+                )
             }
 
             Tab("プロフィール", systemImage: "person", value: .profile) {
