@@ -26,6 +26,7 @@ struct TimelinePostCard: View {
                 .frame(height: 130)
             }
             .overlay(alignment: .topLeading) { header.padding(14) }
+            .overlay(alignment: .bottomTrailing) { memoLabel }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             .accessibilityElement(children: .combine)
@@ -69,6 +70,23 @@ struct TimelinePostCard: View {
             }
         }
         .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+    }
+
+    /// メモがあるときだけ右下に出す。写真の上でも読めるよう半透明の黒地に載せる。
+    @ViewBuilder
+    private var memoLabel: some View {
+        if let memo = post.memo?.trimmingCharacters(in: .whitespacesAndNewlines), !memo.isEmpty {
+            Text(memo)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.leading, 48)
+                .padding(12)
+        }
     }
 
     @ViewBuilder
@@ -134,14 +152,15 @@ struct UserInitialAvatar: View {
     VStack(spacing: 16) {
         TimelinePostCard(
             post: TimelinePost(
-                id: UUID(), storeName: "カフェ つむぎ", category: "カフェ・喫茶", userID: UUID(),
+                id: UUID(), storeName: "カフェ つむぎ", category: "カフェ・喫茶",
+                memo: "ラテアートがかわいい。季節のタルトもおすすめ", userID: UUID(),
                 userName: "あおい", isMine: false, createdAt: .now, coverImageURL: nil
             ),
             timeText: "2時間前"
         )
         TimelinePostCard(
             post: TimelinePost(
-                id: UUID(), storeName: "麺屋 はる", category: "ラーメン・麺類", userID: UUID(),
+                id: UUID(), storeName: "麺屋 はる", category: "ラーメン・麺類", memo: nil, userID: UUID(),
                 userName: "はる", isMine: true, createdAt: .now, coverImageURL: nil
             ),
             timeText: "5時間前"

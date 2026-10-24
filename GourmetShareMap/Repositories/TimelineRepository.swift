@@ -36,6 +36,7 @@ final class TimelineRepository {
                 id: store.id,
                 storeName: store.name,
                 category: store.category,
+                memo: store.memo,
                 userID: store.userID,
                 userName: names[store.userID],
                 isMine: store.userID == userID,

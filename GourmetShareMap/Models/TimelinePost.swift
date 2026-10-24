@@ -6,6 +6,7 @@ nonisolated struct TimelinePost: Equatable, Identifiable, Sendable {
     let id: UUID
     let storeName: String
     let category: String?
+    let memo: String?
     let userID: UUID
     /// user.name。取得できなかったときは nil。
     let userName: String?

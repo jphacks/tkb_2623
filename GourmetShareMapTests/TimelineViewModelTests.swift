@@ -39,7 +39,7 @@ struct TimelineViewModelTests {
 
     private func post(_ name: String, at createdAt: Date, isMine: Bool) -> TimelinePost {
         TimelinePost(
-            id: UUID(), storeName: name, category: "カフェ・喫茶", userID: UUID(),
+            id: UUID(), storeName: name, category: "カフェ・喫茶", memo: nil, userID: UUID(),
             userName: "あおい", isMine: isMine, createdAt: createdAt, coverImageURL: nil
         )
     }
