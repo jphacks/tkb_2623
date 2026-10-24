@@ -83,6 +83,54 @@ struct UserRepositoryTests {
         await #expect(throws: URLError.self) { try await repository.fetchMyProfile() }
     }
 
+    // MARK: - fetchProfile(userID:)
+
+    @Test func fetchProfileReturnsSpecifiedUsersRow() async throws {
+        let friendID = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+        let json = """
+        {"id":"\(friendID)","name":"フレンド花子","bio":"そば好き","profile_image":null}
+        """
+        let (repository, session) = try await makeRepository(fetchResponse: Data(json.utf8))
+        defer { session.invalidateAndCancel() }
+        let profile = try await repository.fetchProfile(userID: friendID)
+        #expect(profile.id == friendID)
+        #expect(profile.name == "フレンド花子")
+        #expect(profile.bio == "そば好き")
+        #expect(profile.profileImage == nil)
+
+        let request = try #require(UserMockURLProtocol.requests.last)
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/rest/v1/user")
+        #expect(query(request, "id")?.lowercased() == "eq.\(friendID.uuidString.lowercased())")
+        #expect(query(request, "select") == "id,name,bio,profile_image")
+    }
+
+    @Test func fetchProfileThrowsWhenRowIsNotVisibleToCaller() async throws {
+        // RLS（フォロー中ユーザーの行のみ参照可）により対象がフォロー相手でない場合、
+        // PostgRESTはsingle()が要求する単一オブジェクト応答に対して0件エラー（PGRST116, 406）を返す。
+        let response = Data(#"{"code":"PGRST116","details":"Results contain 0 rows","hint":null,"message":"JSON object requested, multiple (or no) rows returned"}"#.utf8)
+        let (repository, session) = try await makeRepository(fetchStatus: 406, fetchResponse: response)
+        defer { session.invalidateAndCancel() }
+        do {
+            _ = try await repository.fetchProfile(userID: UUID())
+            Issue.record("行が参照不可の場合のエラーがthrowされませんでした")
+        } catch let error as PostgrestError {
+            #expect(error.code == "PGRST116")
+        }
+    }
+
+    @Test func fetchProfilePropagatesDatabaseDenial() async throws {
+        let response = Data(#"{"code":"42501","message":"new row violates row-level security policy","details":null,"hint":null}"#.utf8)
+        let (repository, session) = try await makeRepository(fetchStatus: 403, fetchResponse: response)
+        defer { session.invalidateAndCancel() }
+        do {
+            _ = try await repository.fetchProfile(userID: UUID())
+            Issue.record("DBエラーがthrowされませんでした")
+        } catch let error as PostgrestError {
+            #expect(error.code == "42501")
+        }
+    }
+
     // MARK: - uploadProfileImage
 
     @Test func uploadProfileImageWithNoExistingImageSkipsDeletion() async throws {

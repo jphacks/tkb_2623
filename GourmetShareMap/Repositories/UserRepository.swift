@@ -34,11 +34,17 @@ final class UserRepository {
     /// user テーブルのRLS（auth.uid() = id の行のみ参照可）により、他ユーザーの行は取得できない。
     func fetchMyProfile() async throws -> UserProfile {
         let userId = try await client.auth.session.user.id
+        return try await fetchProfile(userID: userId)
+    }
 
-        return try await client
+    /// 指定した`userID`のプロフィール（表示名・自己紹介・アイコン画像パス）を取得する。
+    /// 友達のプロフィール表示用。user テーブルのRLS（フォロー中ユーザーの行も参照可）の範囲でのみ取得できる。
+    /// フォロー関係のない相手を指定した場合は、該当行が0件となりPostgrestError（PGRST116）が返る。
+    func fetchProfile(userID: UUID) async throws -> UserProfile {
+        try await client
             .from("user")
             .select("id, name, bio, profile_image")
-            .eq("id", value: userId)
+            .eq("id", value: userID)
             .single()
             .execute()
             .value
