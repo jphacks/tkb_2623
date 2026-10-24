@@ -24,8 +24,15 @@ struct RootView: View {
 
 // MainTabViewができたら差し替える。
 private struct MainPlaceholderView: View {
+    @EnvironmentObject private var authViewModel: AuthViewModel
+
     var body: some View {
-        Text("メイン画面")
+        VStack(spacing: 16) {
+            Text("メイン画面")
+            Button("ログアウト") {
+                Task { await authViewModel.signOut() }
+            }
+        }
     }
 }
 
