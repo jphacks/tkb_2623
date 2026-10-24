@@ -113,8 +113,47 @@ struct ProfileViewModelTests {
         #expect(viewModel.displayName == "復帰後")
     }
 
-    private func makeProfile(name: String? = "テスト太郎", bio: String? = nil) -> UserProfile {
-        UserProfile(id: UUID(), name: name, bio: bio, profileImage: nil)
+    @Test func loadSetsAvatarURLWhenProfileImageIsSet() async throws {
+        let signedURL = URL(string: "https://example.com/signed/avatar.jpg")!
+        let profile = makeProfile(profileImage: "11111111-1111-1111-1111-111111111111/icon.jpg")
+        let fakeProfile = FakeProfileDataSource(.success(profile))
+        fakeProfile.signedURLResult = .success(signedURL)
+        let viewModel = ProfileViewModel(
+            profileDataSource: fakeProfile,
+            storesDataSource: FakeStoresDataSource(.success([]))
+        )
+        await viewModel.load()
+
+        #expect(viewModel.avatarURL == signedURL)
+        #expect(fakeProfile.lastSignedURLPath == "11111111-1111-1111-1111-111111111111/icon.jpg")
+    }
+
+    @Test func loadKeepsAvatarURLNilWhenProfileImageIsNil() async throws {
+        let viewModel = ProfileViewModel(
+            profileDataSource: FakeProfileDataSource(.success(makeProfile(profileImage: nil))),
+            storesDataSource: FakeStoresDataSource(.success([]))
+        )
+        await viewModel.load()
+
+        #expect(viewModel.avatarURL == nil)
+    }
+
+    @Test func loadFallsBackToNilAvatarURLWhenSigningFails() async throws {
+        let fakeProfile = FakeProfileDataSource(.success(makeProfile(profileImage: "some/path.jpg")))
+        fakeProfile.signedURLResult = .failure(FakeError(errorDescription: "署名URL取得エラー"))
+        let viewModel = ProfileViewModel(
+            profileDataSource: fakeProfile,
+            storesDataSource: FakeStoresDataSource(.success([]))
+        )
+        await viewModel.load()
+
+        // 署名URLの取得失敗は画面全体のエラーにはせず、アバターのみ固定アイコンにフォールバックする。
+        #expect(viewModel.avatarURL == nil)
+        #expect(viewModel.errorMessage == nil)
+    }
+
+    private func makeProfile(name: String? = "テスト太郎", bio: String? = nil, profileImage: String? = nil) -> UserProfile {
+        UserProfile(id: UUID(), name: name, bio: bio, profileImage: profileImage)
     }
 
     private func makeStore(
@@ -144,6 +183,9 @@ private final class FakeProfileDataSource: ProfileProfileDataSource {
     }
 
     var mode: Mode
+    var signedURLResult: Result<URL, any Error> = .success(URL(string: "https://example.com/avatar.jpg")!)
+    private(set) var lastSignedURLPath: String?
+
     init(_ mode: Mode) { self.mode = mode }
 
     func fetchMyProfile() async throws -> UserProfile {
@@ -151,6 +193,11 @@ private final class FakeProfileDataSource: ProfileProfileDataSource {
         case let .success(profile): return profile
         case let .failure(error): throw error
         }
+    }
+
+    func signedURL(path: String, expiresIn: Int) async throws -> URL {
+        lastSignedURLPath = path
+        return try signedURLResult.get()
     }
 }
 

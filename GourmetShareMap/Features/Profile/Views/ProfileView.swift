@@ -20,13 +20,19 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     header
 
-                    profileSummary
+                    if viewModel.isLoading {
+                        loadingView
+                    } else if let errorMessage = viewModel.errorMessage {
+                        errorView(message: errorMessage)
+                    } else {
+                        profileSummary
 
-                    statsRow
+                        statsRow
 
-                    recentRecordsSection
+                        recentRecordsSection
 
-                    friendListButton
+                        friendListButton
+                    }
 
                     logoutButton
                 }
@@ -47,26 +53,77 @@ struct ProfileView: View {
             .padding(.top, 8)
     }
 
+    private var loadingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+            Text("読み込み中…")
+                .font(.system(size: 14))
+                .foregroundStyle(.black.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 40)
+    }
+
+    private func errorView(message: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 28))
+                .foregroundStyle(accentOrange)
+            Text("読み込みに失敗しました")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.black)
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundStyle(.black.opacity(0.5))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 40)
+    }
+
+    private var avatarView: some View {
+        Circle()
+            .fill(
+                LinearGradient(
+                    colors: [Color(red: 0.95, green: 0.80, blue: 0.62), Color(red: 0.89, green: 0.63, blue: 0.45)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(width: 72, height: 72)
+            .overlay {
+                if let avatarURL = viewModel.avatarURL {
+                    AsyncImage(url: avatarURL) { phase in
+                        if case .success(let image) = phase {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 72, height: 72)
+                                .clipShape(Circle())
+                        } else {
+                            // 読み込み中・失敗時は固定アイコンにフォールバックする。
+                            avatarFallbackIcon
+                        }
+                    }
+                } else {
+                    avatarFallbackIcon
+                }
+            }
+            .overlay {
+                Circle().stroke(Color.white, lineWidth: 3)
+            }
+            .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
+    }
+
+    private var avatarFallbackIcon: some View {
+        Image(systemName: "person.fill")
+            .font(.system(size: 30))
+            .foregroundStyle(.white)
+    }
+
     private var profileSummary: some View {
         HStack(spacing: 16) {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.95, green: 0.80, blue: 0.62), Color(red: 0.89, green: 0.63, blue: 0.45)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: 72, height: 72)
-                .overlay {
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 30))
-                        .foregroundStyle(.white)
-                }
-                .overlay {
-                    Circle().stroke(Color.white, lineWidth: 3)
-                }
-                .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
+            avatarView
 
             Text(viewModel.displayName)
                 .font(.system(size: 26, weight: .heavy))
