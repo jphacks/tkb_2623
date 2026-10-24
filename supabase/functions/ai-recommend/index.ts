@@ -75,32 +75,34 @@ Deno.serve(async (req: Request) => {
     image: { id: string; image: string }[] | null;
   };
 
-  const history: Record<string, unknown>[] = [];
-  for (const store of (stores ?? []) as StoreRow[]) {
-    const firstImage = store.image?.[0];
-    if (!firstImage) continue; // CLIP特徴量の計算に画像が必須のため、画像の無い店舗は学習データから除外
+  // 画像のダウンロードはネットワークI/O待ちが大半なので、店舗数分を並列化する
+  // (店舗数が多いユーザーで1件ずつ待つと、Cloud Run側の処理時間と合わせてクライアントの
+  // タイムアウトを超えることがあった)。
+  const storesWithPhotos = (stores ?? []).filter((s: StoreRow) => s.image?.[0]);
+  const historyResults = await Promise.all(
+    storesWithPhotos.map(async (store: StoreRow) => {
+      const firstImage = store.image![0];
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from(RECORD_IMAGES_BUCKET)
+        .download(firstImage.image);
+      if (downloadError || !fileData) return null;
 
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from(RECORD_IMAGES_BUCKET)
-      .download(firstImage.image);
-    if (downloadError || !fileData) continue;
-
-    const bytes = new Uint8Array(await fileData.arrayBuffer());
-    const imageBase64 = encodeBase64(bytes);
-
-    history.push({
-      place_id: store.id,
-      image_id: firstImage.id,
-      image_base64: imageBase64,
-      category: store.category ?? "その他",
-      price_level: store.price_level ?? DEFAULTS.price_level,
-      google_rating: store.google_rating ?? DEFAULTS.google_rating,
-      review_count: store.review_count ?? DEFAULTS.review_count,
-      user_id: userId,
-      rating: store.reputation,
-      rated_at: store.created_at,
-    });
-  }
+      const bytes = new Uint8Array(await fileData.arrayBuffer());
+      return {
+        place_id: store.id,
+        image_id: firstImage.id,
+        image_base64: encodeBase64(bytes),
+        category: store.category ?? "その他",
+        price_level: store.price_level ?? DEFAULTS.price_level,
+        google_rating: store.google_rating ?? DEFAULTS.google_rating,
+        review_count: store.review_count ?? DEFAULTS.review_count,
+        user_id: userId,
+        rating: store.reputation,
+        rated_at: store.created_at,
+      };
+    }),
+  );
+  const history = historyResults.filter((h): h is Record<string, unknown> => h !== null);
 
   if (history.length < MIN_RECORDS) {
     return new Response(
