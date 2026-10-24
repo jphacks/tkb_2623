@@ -26,7 +26,7 @@ struct NearbyStoreIntegrationCheck {
         catch {
             // Google側のエラーにキーが含まれていてもコンソールへ出さない。
             let message = error.localizedDescription
-            let key = GoogleMapConfig.apiKey
+            let key = GoogleMapsConfig.apiKey
             let redacted = key.isEmpty ? message : message.replacingOccurrences(of: key, with: "[REDACTED]")
             FileHandle.standardError.write(Data("結合テスト失敗: \(redacted)\n".utf8))
             exit(1)
@@ -75,7 +75,7 @@ struct NearbyStoreIntegrationCheck {
             ]}
             """)
         }
-        let key = mock ? "fixture-key" : GoogleMapConfig.apiKey
+        let key = mock ? "fixture-key" : GoogleMapsConfig.apiKey
         guard let result = try await searchAndSaveNearest(
             latitude: latitude, longitude: longitude, apiKey: key, session: session, repository: repository
         ) else {

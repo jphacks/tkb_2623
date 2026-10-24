@@ -67,7 +67,7 @@ DBのポートは公開せず、終了時に一時DB・コンテナを削除し�
 
 ### Swift Testing
 
-MacのXcodeで`SupabaseConfig.swift.example`と`GoogleMapConfig.swift.example`をもとに
+MacのXcodeで`SupabaseConfig.swift.example`と`GoogleMapsConfig.swift.example`をもとに
 ローカル設定ファイルを準備し、依存パッケージを解決してから、
 `GourmetShareMapTests`の`RecordRepositoryTests`を実行してください。
 テストは専用のインメモリ認証ストレージとURLProtocolを使い、実際の認証・DBへ接続しません。
@@ -93,7 +93,7 @@ Docker・Swift 6.2以上・Python 3・curlを用意し、リポジトリのル�
 bash supabase/tests/check_nearby_store_local.sh --live 35.713329 139.7617112
 ```
 
-APIキーは`GOOGLE_MAPS_API_KEY`環境変数、または既存の`GoogleMapConfig.swift`に設定します。
+APIキーは`GOOGLE_MAPS_API_KEY`環境変数、または既存の`GoogleMapsConfig.swift`に設定します。
 実GoogleのNearby Searchを1回呼び出すため、Places API (New)を有効にしたキーが必要で、
 API利用料金が発生する場合があります。キーはログや一時ソースへ出力しません。
 
