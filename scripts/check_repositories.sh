@@ -10,8 +10,7 @@ cp "$repo_dir"/GourmetShareMap/Models/*.swift "$build_dir/Sources/GourmetShareMa
 cp "$repo_dir"/GourmetShareMapTests/*RepositoryTests.swift "$build_dir/Tests/GourmetShareMapTests/"
 cat > "$build_dir/Sources/GourmetShareMap/SupabaseManager.swift" <<'SWIFT'
 import Supabase
-@MainActor
-final class SupabaseManager {
+nonisolated final class SupabaseManager: Sendable {
     static let shared = SupabaseManager()
     var client: SupabaseClient { fatalError("Tests must inject their client") }
 }

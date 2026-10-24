@@ -50,6 +50,21 @@ let saved = try await repository.saveStore(
 
 ## テスト
 
+### ローカルでテーブル生成・疑似データを確認
+
+Dockerを起動し、リポジトリのルートから実行します。SupabaseのアカウントやAPIキーは不要です。
+
+```sh
+bash supabase/tests/check_store_local.sh
+```
+
+一時PostgreSQL 17にAuth相当の最小構成と既存`schema.sql`を適用し、テーブル一覧・`store`の
+カラムと制約・疑似店舗2件を表示します。保存とRLSのSQLテストも実行し、最後に「成功」と表示されればOKです。
+初回はDockerイメージのダウンロードが発生します。
+
+DBのポートは公開せず、終了時に一時DB・コンテナを削除します。既存のローカルDBや本番DBには接続しません。
+これはPostgreSQLでのスキーマ・データ・RLSの確認です。Supabase Auth本体やSwiftからの実通信は検証しません。
+
 ### Swift Testing
 
 MacのXcodeで`SupabaseConfig.swift.example`と`GoogleMapConfig.swift.example`をもとに
@@ -66,6 +81,48 @@ xcodebuild test -project GourmetShareMap.xcodeproj -scheme GourmetShareMap \
   -destination 'platform=iOS Simulator,id=<利用可能なシミュレータUUID>' \
   -only-testing:GourmetShareMapTests/RecordRepositoryTests
 ```
+
+### Nearby Searchと店舗保存の結合テスト
+
+Docker・Swift 6.2以上・Python 3・curlを用意し、リポジトリのルートから実行します。
+初回はSupabase SDK 2.55.4の依存解決・ビルドと、PostgRESTイメージの取得が必要です。
+
+実Google APIから最寄り店舗を取得する場合:
+
+```sh
+bash supabase/tests/check_nearby_store_local.sh --live 35.713329 139.7617112
+```
+
+APIキーは`GOOGLE_MAPS_API_KEY`環境変数、または既存の`GoogleMapConfig.swift`に設定します。
+実GoogleのNearby Searchを1回呼び出すため、Places API (New)を有効にしたキーが必要で、
+API利用料金が発生する場合があります。キーはログや一時ソースへ出力しません。
+
+GoogleのAPIキーなしで結合部分を検証する場合:
+
+```sh
+bash supabase/tests/check_nearby_store_local.sh --mock
+```
+
+両モードとも、アプリ本体の`NearbyShopClient`・カテゴリ判定・`RecordRepository`を使用します。
+半径1km以内の飲食店・カフェを距離順で検索し、返された最大5件の座標から直線距離が最小の店舗を選びます。
+モックモードでは意図的に最寄り店舗を先頭以外へ置き、店舗の選択も検証します。
+
+検証する流れ:
+
+1. Nearby Search → 最短距離の店舗選択。
+2. その店舗のGoogle店舗ID・店名・カテゴリ・店舗の座標を`RecordRepository`で保存。
+3. 実PostgREST・PostgreSQLから再取得し、所有者・保存値・件数1件を照合。
+4. IDを渡さず同じ店舗を再保存し、訪問回数2・メモNULL・IDと作成日時保持・重複なしを確認。
+5. モックモードでは、検索0件・Google APIエラー時に保存へ進まないことも確認。
+
+実APIの検索結果が0件の場合は、保存せず終了コード1で理由を表示します。別の座標で再実行してください。
+最寄り店舗の名前・Google店舗ID・距離・最終DB行と「成功」が出れば確認完了です。
+
+Authには疑似ユーザーと署名済みのテスト用JWTを使用し、Apple認証・Supabase Auth本体は起動しません。
+SDKの`/rest/v1`プレフィックスをテスト用URLProtocolで外して、ローカルの実PostgRESTへHTTP転送します。
+DB側は既存の`schema.sql`を使用し、RLSが有効な`authenticated`ロールでアクセスします。
+PostgRESTは127.0.0.1のランダムポートのみ公開し、終了時にDB・PostgREST・ネットワークを削除します。
+ビルド結果のみOSの一時ディレクトリにキャッシュします。本番DBの設定は使用しません。
 
 ### DBの制約・RLS
 
@@ -90,6 +147,8 @@ iOSアプリ全体のビルドとシミュレータテストにはMacとXcodeが
   アプリと同じMainActor既定設定を使い、接続マネージャーのみテスト用に差し替えています。
 - 一時PostgreSQL 17上で、Authの最小構成と変更していない既存`schema.sql`を適用し、
   `tests/store.sql`の保存・フレンド共有・RLSの検証が成功しました。
+- Nearby Searchの結合テストは、実Google APIモードとGoogleモックモードの両方で、
+  最寄り店舗の選択・ローカル実DBへの登録・再取得・同じ行の更新が成功しました。
 - 実際のSupabaseプロジェクトへの操作、iOSアプリ全体のビルド、Xcodeシミュレータテストは未実行です。
 
 ## マップ・プロフィール向けの店舗一覧

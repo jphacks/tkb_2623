@@ -24,3 +24,6 @@ DerivedData/
 # Supabase secrets — fill in GourmetShareMap/Supabase/SupabaseConfig.swift locally,
 # copying it from SupabaseConfig.swift.example. Never commit the real values.
 GourmetShareMap/Supabase/SupabaseConfig.swift
+
+# Google Maps API key
+GourmetShareMap/Services/Places/GoogleMapConfig.swift
