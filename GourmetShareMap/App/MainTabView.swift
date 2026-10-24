@@ -6,6 +6,8 @@
 import SwiftUI
 
 struct MainTabView: View {
+    private let accentOrange = Color(red: 0.76, green: 0.35, blue: 0.22)
+
     var body: some View {
         TabView {
             MapView()
@@ -23,6 +25,7 @@ struct MainTabView: View {
                     Label("プロフィール", systemImage: "person")
                 }
         }
+        .tint(accentOrange)
     }
 }
 
