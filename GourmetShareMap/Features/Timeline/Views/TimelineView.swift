@@ -12,6 +12,7 @@ struct TimelineView: View {
 
     @Environment(RecordStore.self) private var recordStore
     @State private var viewModel = TimelineViewModel()
+    @State private var commentPost: TimelinePost?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +23,9 @@ struct TimelineView: View {
         .background(.appBackground)
         // 表示時と、自分の記録を登録・更新したあとに取り直す。
         .task(id: recordStore.records) { await viewModel.load() }
+        .sheet(item: $commentPost) { post in
+            CommentSheetView(storeID: post.id, storeName: post.storeName)
+        }
     }
 
     private var header: some View {
@@ -86,7 +90,13 @@ struct TimelineView: View {
                         .padding(.top, 8)
 
                     ForEach(section.posts) { post in
-                        TimelinePostCard(post: post, timeText: viewModel.timeText(for: post))
+                        TimelinePostCard(
+                            post: post,
+                            timeText: viewModel.timeText(for: post),
+                            onTapLike: { Task { await viewModel.toggleLike(for: post) } }
+                        ) {
+                            commentPost = post
+                        }
                     }
                 }
             }

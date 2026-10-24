@@ -13,6 +13,14 @@ protocol TimelineFeedFetching {
 
 extension TimelineRepository: TimelineFeedFetching {}
 
+/// いいねの追加・取り消し（`LikeRepository`）。テストで差し替えられるようにプロトコルにしている。
+protocol LikeToggling {
+    func like(storeID: UUID) async throws
+    func unlike(storeID: UUID) async throws
+}
+
+extension LikeRepository: LikeToggling {}
+
 enum TimelineFilter: String, CaseIterable, Identifiable {
     case all = "すべて"
     case mine = "自分"
@@ -48,16 +56,19 @@ final class TimelineViewModel {
     private(set) var loadState: LoadState = .idle
 
     private let repository: any TimelineFeedFetching
+    private let likeRepository: any LikeToggling
     private let calendar: Calendar
     private let now: () -> Date
 
     /// 引数を省略すると Supabase に接続する本番の Repository を使う。
     init(
         repository: (any TimelineFeedFetching)? = nil,
+        likeRepository: (any LikeToggling)? = nil,
         calendar: Calendar = .current,
         now: @escaping () -> Date = { .now }
     ) {
         self.repository = repository ?? TimelineRepository()
+        self.likeRepository = likeRepository ?? LikeRepository()
         self.calendar = calendar
         self.now = now
     }
@@ -99,6 +110,24 @@ final class TimelineViewModel {
             if loadState == .loading { loadState = .idle }
         } catch {
             loadState = .failed(error.localizedDescription)
+        }
+    }
+
+    /// いいねの状態を即座に反転させてから送信する（楽観的更新）。失敗したら元に戻す。
+    func toggleLike(for post: TimelinePost) async {
+        guard let index = posts.firstIndex(where: { $0.id == post.id }) else { return }
+        let wasLiked = posts[index].isLikedByMe
+        posts[index] = posts[index].togglingLike()
+        do {
+            if wasLiked {
+                try await likeRepository.unlike(storeID: post.id)
+            } else {
+                try await likeRepository.like(storeID: post.id)
+            }
+        } catch {
+            if let revertIndex = posts.firstIndex(where: { $0.id == post.id }) {
+                posts[revertIndex] = posts[revertIndex].togglingLike()
+            }
         }
     }
 
