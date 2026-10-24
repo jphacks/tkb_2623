@@ -33,8 +33,9 @@ struct GrowView: View {
                 .padding(.top, 14)
                 .padding(.bottom, 28)
             }
-            // 下にスワイプすればキーボードを閉じられる（下の「閉じる」ボタンと合わせて二重の導線）。
-            .scrollDismissesKeyboard(.interactively)
+            // Appleのガイダンス: `.interactively`はTextEditor等の専用編集画面向け。
+            // この画面は情報ページの中に入力欄が1つあるだけなので`.immediate`が適切。
+            .scrollDismissesKeyboard(.immediately)
         }
         .background(.appBackground)
         // 表示時と、記録を登録・更新したあとにモデルの状態を取り直す。
