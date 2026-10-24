@@ -51,7 +51,8 @@ struct LiveRecommendService: RecommendServing {
         let session = try await client.auth.session
         var request = URLRequest(url: SupabaseConfig.url.appendingPathComponent("functions/v1/ai-recommend"))
         request.httpMethod = "POST"
-        request.timeoutInterval = 60
+        // Cloud Runのコールドスタート+Gemini/Places/CLIPの直列呼び出しのため長めに取る。
+        request.timeoutInterval = 120
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: [

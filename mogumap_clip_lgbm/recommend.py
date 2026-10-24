@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from google import genai
@@ -94,17 +95,19 @@ def search_candidates(conditions: dict, lat: float, lng: float, max_results: int
     resp.raise_for_status()
     places = resp.json().get("places", [])
     category = conditions.get("category") if conditions.get("category") in CATEGORIES else "その他"
+
+    places_with_photos = [p for p in places[:max_results] if p.get("photos")]
+    with ThreadPoolExecutor(max_workers=max(1, len(places_with_photos))) as pool:
+        # 写真取得はネットワークI/O待ちが大半なので、1件ずつ順番に待たず並列化する。
+        photo_results = list(pool.map(lambda p: _photo_to_base64(p["photos"][0]["name"]), places_with_photos))
+
     candidates = []
-    for p in places[:max_results]:
-        photos = p.get("photos") or []
-        if not photos:
-            continue  # CLIP特徴量の計算に画像が必須
-        image_b64 = _photo_to_base64(photos[0]["name"])
+    for p, image_b64 in zip(places_with_photos, photo_results):
         if not image_b64:
-            continue
+            continue  # CLIP特徴量の計算に画像が必須
         candidates.append({
             "place_id": p["id"],
-            "image_id": photos[0]["name"],
+            "image_id": p["photos"][0]["name"],
             "image_base64": image_b64,
             "name": p.get("displayName", {}).get("text", ""),
             "category": category,
