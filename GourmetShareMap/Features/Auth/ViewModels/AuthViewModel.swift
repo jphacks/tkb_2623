@@ -12,7 +12,7 @@ import Supabase
 final class AuthViewModel: ObservableObject {
     @Published private(set) var session: Session?
     @Published var errorMessage: String?
-    // TODO: DB設計が決まったら、profilesの登録状況から初回かどうかを判定する。
+    // TODO: DB設計が決まったら、userテーブルの登録状況から初回かどうかを判定する。
     @Published private(set) var needsOnboarding = false
 
     private let client = SupabaseManager.shared.client
@@ -43,7 +43,7 @@ final class AuthViewModel: ObservableObject {
             let session = try await client.auth.signInWithIdToken(
                 credentials: .init(provider: .apple, idToken: identityToken, nonce: rawNonce)
             )
-            await upsertProfile(session: session, credential: credential)
+            await createUserIfNeeded(session: session, credential: credential)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -53,36 +53,32 @@ final class AuthViewModel: ObservableObject {
         try? await client.auth.signOut()
     }
 
-    // Apple認証は氏名・メールを初回ログイン時にしか返さないため、ここで必ず保存する。
-    private func upsertProfile(session: Session, credential: ASAuthorizationAppleIDCredential) async {
-        struct ProfileUpsert: Encodable {
+    // 初回ログイン時に user テーブルへ行を作成する。
+    // 既に行がある場合は何もしない（2回目以降はAppleが氏名を返さず、上書きすると消えてしまうため）。
+    private func createUserIfNeeded(session: Session, credential: ASAuthorizationAppleIDCredential) async {
+        struct UserInsert: Encodable {
             let id: UUID
             let email: String?
-            let fullName: String?
-
-            enum CodingKeys: String, CodingKey {
-                case id, email
-                case fullName = "full_name"
-            }
+            let name: String?
         }
 
-        let fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
-            .compactMap { $0 }
-            .joined(separator: " ")
+        let name = credential.fullName
+            .map { PersonNameComponentsFormatter().string(from: $0) }
+            .flatMap { $0.isEmpty ? nil : $0 }
 
-        let payload = ProfileUpsert(
+        let payload = UserInsert(
             id: session.user.id,
             email: credential.email ?? session.user.email,
-            fullName: fullName.isEmpty ? nil : fullName
+            name: name
         )
 
         do {
             try await client
-                .from("profiles")
-                .upsert(payload)
+                .from("user")
+                .upsert(payload, onConflict: "id", returning: .minimal, ignoreDuplicates: true)
                 .execute()
         } catch {
-            errorMessage = "プロフィール保存に失敗しました: \(error.localizedDescription)"
+            errorMessage = "ユーザー情報の保存に失敗しました: \(error.localizedDescription)"
         }
     }
 }
