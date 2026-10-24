@@ -10,57 +10,79 @@ struct LoginView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var currentNonce: String?
 
+    private let backgroundColor = Color(red: 0.984, green: 0.968, blue: 0.937)
+    private let accentOrange = Color(red: 0.76, green: 0.35, blue: 0.22)
+
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        ZStack {
+            backgroundColor.ignoresSafeArea()
 
-            Image(systemName: "fork.knife.circle.fill")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 72, height: 72)
-                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("01 ログイン")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.black)
+                    .padding(.top, 8)
 
-            Text("GourmetShareMap")
-                .font(.largeTitle.bold())
+                Spacer(minLength: 20)
 
-            Spacer()
+                VStack(spacing: 20) {
+                    GourmetMascotView()
 
-            SignInWithAppleButton(.signIn) { request in
-                let nonce = NonceUtils.randomNonceString()
-                currentNonce = nonce
-                request.requestedScopes = [.fullName, .email]
-                request.nonce = NonceUtils.sha256(nonce)
-            } onCompletion: { result in
-                switch result {
-                case .success(let authorization):
-                    guard
-                        let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
-                        let nonce = currentNonce
-                    else {
-                        authViewModel.errorMessage = "Appleの認証情報の取得に失敗しました"
-                        return
+                    VStack(spacing: 6) {
+                        Text("あなたのご飯を")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(.black)
+                        Text("覚えん坊")
+                            .font(.system(size: 34, weight: .heavy))
+                            .foregroundStyle(accentOrange)
+                        Text("おいしい記憶を、地図に。")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.black.opacity(0.6))
+                            .padding(.top, 2)
                     }
-                    Task {
-                        await authViewModel.signInWithApple(credential: credential, rawNonce: nonce)
-                    }
-                case .failure(let error):
-                    authViewModel.errorMessage = error.localizedDescription
                 }
-            }
-            .signInWithAppleButtonStyle(.black)
-            .frame(height: 50)
-            .padding(.horizontal, 32)
+                .frame(maxWidth: .infinity)
 
-            if let errorMessage = authViewModel.errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, 32)
-            }
+                Spacer(minLength: 28)
 
-            Spacer()
+                VStack(spacing: 12) {
+                    SignInWithAppleButton(.signIn) { request in
+                        let nonce = NonceUtils.randomNonceString()
+                        currentNonce = nonce
+                        request.requestedScopes = [.fullName, .email]
+                        request.nonce = NonceUtils.sha256(nonce)
+                    } onCompletion: { result in
+                        switch result {
+                        case .success(let authorization):
+                            guard
+                                let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                                let nonce = currentNonce
+                            else {
+                                authViewModel.errorMessage = "Appleの認証情報の取得に失敗しました"
+                                return
+                            }
+                            Task {
+                                await authViewModel.signInWithApple(credential: credential, rawNonce: nonce)
+                            }
+                        case .failure(let error):
+                            authViewModel.errorMessage = error.localizedDescription
+                        }
+                    }
+                    .signInWithAppleButtonStyle(.black)
+                    .frame(height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    if let errorMessage = authViewModel.errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding(.bottom, 24)
+            }
+            .padding(.horizontal, 28)
         }
-        .padding()
     }
 }
 

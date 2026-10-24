@@ -37,7 +37,6 @@
 		C3484F003088F00000153DB9 /* Exceptions for "GourmetShareMap" folder in "GourmetShareMap" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				App/.gitkeep,
 				Core/.gitkeep,
 				Features/Friend/Components/.gitkeep,
 				Features/Friend/ViewModels/.gitkeep,

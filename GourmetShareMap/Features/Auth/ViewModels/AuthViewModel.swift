@@ -12,6 +12,8 @@ import Supabase
 final class AuthViewModel: ObservableObject {
     @Published private(set) var session: Session?
     @Published var errorMessage: String?
+    // TODO: DB設計が決まったら、profilesの登録状況から初回かどうかを判定する。
+    @Published private(set) var needsOnboarding = false
 
     private let client = SupabaseManager.shared.client
     private var authStateTask: Task<Void, Never>?
