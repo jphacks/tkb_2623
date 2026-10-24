@@ -22,6 +22,17 @@ struct TimelineView: View {
         .background(.appBackground)
         // 表示時と、自分の記録を登録・更新したあとに取り直す。
         .task(id: recordStore.records) { await viewModel.load() }
+        .alert(
+            "ブロックに失敗しました",
+            isPresented: Binding(
+                get: { viewModel.blockErrorMessage != nil },
+                set: { isPresented in if !isPresented { viewModel.blockErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.blockErrorMessage ?? "")
+        }
     }
 
     private var header: some View {
@@ -86,7 +97,11 @@ struct TimelineView: View {
                         .padding(.top, 8)
 
                     ForEach(section.posts) { post in
-                        TimelinePostCard(post: post, timeText: viewModel.timeText(for: post))
+                        TimelinePostCard(
+                            post: post,
+                            timeText: viewModel.timeText(for: post),
+                            onBlock: post.isMine ? nil : { Task { await viewModel.block(post) } }
+                        )
                     }
                 }
             }

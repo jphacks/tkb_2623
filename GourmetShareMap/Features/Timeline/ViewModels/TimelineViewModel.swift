@@ -11,7 +11,13 @@ protocol TimelineFeedFetching {
     func fetchFeed(since: Date) async throws -> TimelineFeed
 }
 
+/// 投稿者のブロック（`BlockRepository`）。テストで差し替えられるようにプロトコルにしている。
+protocol TimelineUserBlocking {
+    func block(userID: UUID) async throws
+}
+
 extension TimelineRepository: TimelineFeedFetching {}
+extension BlockRepository: TimelineUserBlocking {}
 
 enum TimelineFilter: String, CaseIterable, Identifiable {
     case all = "すべて"
@@ -46,18 +52,23 @@ final class TimelineViewModel {
     private(set) var posts: [TimelinePost] = []
     private(set) var friendCount = 0
     private(set) var loadState: LoadState = .idle
+    /// ブロック操作の失敗メッセージ。Viewが確認後にnilへ戻す。
+    var blockErrorMessage: String?
 
     private let repository: any TimelineFeedFetching
+    private let blockRepository: any TimelineUserBlocking
     private let calendar: Calendar
     private let now: () -> Date
 
     /// 引数を省略すると Supabase に接続する本番の Repository を使う。
     init(
         repository: (any TimelineFeedFetching)? = nil,
+        blockRepository: (any TimelineUserBlocking)? = nil,
         calendar: Calendar = .current,
         now: @escaping () -> Date = { .now }
     ) {
         self.repository = repository ?? TimelineRepository()
+        self.blockRepository = blockRepository ?? BlockRepository()
         self.calendar = calendar
         self.now = now
     }
@@ -99,6 +110,18 @@ final class TimelineViewModel {
             if loadState == .loading { loadState = .idle }
         } catch {
             loadState = .failed(error.localizedDescription)
+        }
+    }
+
+    /// 指定した投稿者をブロックする。成功したら、その人の投稿を即時にタイムラインから取り除く
+    /// （次回のload()では、既にDB側のRLSで見えなくなっている）。
+    func block(_ post: TimelinePost) async {
+        blockErrorMessage = nil
+        do {
+            try await blockRepository.block(userID: post.userID)
+            posts.removeAll { $0.userID == post.userID }
+        } catch {
+            blockErrorMessage = error.localizedDescription
         }
     }
 

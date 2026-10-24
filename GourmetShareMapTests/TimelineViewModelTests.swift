@@ -21,6 +21,17 @@ final class FakeTimelineFeedFetcher: TimelineFeedFetching {
 }
 
 @MainActor
+final class FakeTimelineUserBlocker: TimelineUserBlocking {
+    var error: (any Error)?
+    private(set) var blockedUserIDs: [UUID] = []
+
+    func block(userID: UUID) async throws {
+        if let error { throw error }
+        blockedUserIDs.append(userID)
+    }
+}
+
+@MainActor
 struct TimelineViewModelTests {
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -44,9 +55,14 @@ struct TimelineViewModelTests {
         )
     }
 
-    private func makeViewModel(_ fetcher: FakeTimelineFeedFetcher) -> TimelineViewModel {
+    private func makeViewModel(
+        _ fetcher: FakeTimelineFeedFetcher,
+        blocker: FakeTimelineUserBlocker? = nil
+    ) -> TimelineViewModel {
         let now = now
-        return TimelineViewModel(repository: fetcher, calendar: calendar, now: { now })
+        return TimelineViewModel(
+            repository: fetcher, blockRepository: blocker ?? FakeTimelineUserBlocker(), calendar: calendar, now: { now }
+        )
     }
 
     @Test func 一昨日の0時以降を取得する() async {
@@ -124,5 +140,45 @@ struct TimelineViewModelTests {
             Issue.record("失敗状態になっていない: \(viewModel.loadState)")
             return
         }
+    }
+
+    @Test func ブロックに成功したらその投稿者の投稿を取り除く() async {
+        let fetcher = FakeTimelineFeedFetcher()
+        let blockedUserID = UUID()
+        let remainingUserID = UUID()
+        fetcher.feed = TimelineFeed(posts: [
+            TimelinePost(
+                id: UUID(), storeName: "ブロック対象の店", category: nil, memo: nil, userID: blockedUserID,
+                userName: "太郎", isMine: false, createdAt: date(day: 24, hour: 13), coverImageURL: nil
+            ),
+            TimelinePost(
+                id: UUID(), storeName: "残る店", category: nil, memo: nil, userID: remainingUserID,
+                userName: "花子", isMine: false, createdAt: date(day: 24, hour: 12), coverImageURL: nil
+            ),
+        ], friendCount: 2)
+        let blocker = FakeTimelineUserBlocker()
+        let viewModel = makeViewModel(fetcher, blocker: blocker)
+        await viewModel.load()
+
+        await viewModel.block(viewModel.posts[0])
+
+        #expect(blocker.blockedUserIDs == [blockedUserID])
+        #expect(viewModel.posts.map(\.storeName) == ["残る店"])
+        #expect(viewModel.blockErrorMessage == nil)
+    }
+
+    @Test func ブロックに失敗したらエラーを保持し投稿は残す() async {
+        let fetcher = FakeTimelineFeedFetcher()
+        let post = post("フレンドの店", at: date(day: 24, hour: 12), isMine: false)
+        fetcher.feed = TimelineFeed(posts: [post], friendCount: 1)
+        let blocker = FakeTimelineUserBlocker()
+        blocker.error = URLError(.notConnectedToInternet)
+        let viewModel = makeViewModel(fetcher, blocker: blocker)
+        await viewModel.load()
+
+        await viewModel.block(post)
+
+        #expect(viewModel.posts.map(\.storeName) == ["フレンドの店"])
+        #expect(viewModel.blockErrorMessage != nil)
     }
 }

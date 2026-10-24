@@ -269,3 +269,50 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/seed_store.sql
   シード8件・フォロー2件が入ったことを確認しました（既存の実データ1件は変更していません）。
 - Swift側（`fetchVisibleStores()` / `fetchImages(storeID:)`）はマップ画面と合わせて
   シミュレータ向けビルドが成功しています。
+
+## ブロック機能
+
+```swift
+try await BlockRepository().block(userID: targetUserID)
+try await BlockRepository().unblock(userID: targetUserID)
+let blocked = try await BlockRepository().fetchBlockedUsers() // ブロックした日時の新しい順
+```
+
+- `migrations/20261025000000_block_user.sql`で`blocked_user`テーブルと`block_user()` RPCを追加しました。
+  ブロックは`blocker_id`→`blocked_id`の非対称な行として保存しますが、効果は双方向です
+  （お互いのstore/image/userが見えなくなり、どちらからも再フォローできなくなります）。
+- `block()`は`block_user()` RPCを呼びます。自分の行しか削除できない既存のfriend RLSでは
+  相手側のフォロー行を消せないため、RPC内のSECURITY DEFINERで登録・双方向のフォロー解除を
+  アトミックに行います。二重に呼んでも安全です（`on conflict do nothing`）。
+- `unblock()`は`blocked_user`から自分の行を直接DELETEするだけです（RLSの「自分の行」削除で
+  十分なため、こちらはRPC不要）。解除後は再フォローできます。
+- ブロック中ユーザー一覧（プロフィール画面）に相手の名前を表示するため、`user`テーブルに
+  「自分がブロックした相手の行は参照可」のポリシーを追加しています。
+- `store`/`image`のSELECT RLSにもブロックチェックを直接追加しています（friendの行は
+  block_user()で削除されますが、念のための二重の防御です）。ブロックされた側から
+  「相手が自分をブロックしているか」を判定する必要があるため、blocked_userのRLS
+  （自分がブロックした行のみ参照可）を経由しない`is_blocked_either_way()`
+  （SECURITY DEFINER）を用意し、各ポリシーから共通で呼び出しています。
+- 入口はタイムラインの投稿（他ユーザーの投稿を長押し→確認ダイアログ）です。通報(Report)機能は
+  対象外。
+
+### テスト
+
+```sh
+bash supabase/tests/check_block_user_local.sh
+```
+
+Dockerが必要です。一時PostgreSQL 17に全マイグレーションを適用し、
+[`tests/block_user.sql`](tests/block_user.sql)でRLS・RPCを検証します（終了時に一時DBを削除）。
+ブロックで双方向のフォロー解除・再フォロー拒否・store参照の双方向非表示・解除後の再フォロー可、
+二重ブロックでも行が増えないことを確認しています。
+
+Swift側は`GourmetShareMapTests`の`BlockRepositoryTests`（通信モック）・
+`TimelineViewModelTests`・`BlockedUsersViewModelTests`（ブロック関連のテストケース）で確認できます。
+
+### このタスクの検証結果
+
+- ローカルのPostgreSQL 17（`check_block_user_local.sh`相当の手順）で全マイグレーションを適用し、
+  `tests/block_user.sql`のRLS・RPC検証が成功しました。
+- Swift側の通信モックテスト・ViewModelテストが成功し、iOSシミュレータ向けビルドも成功しています。
+- 実際のSupabaseプロジェクトへの適用、Xcodeシミュレータでの手動確認は未実行です。
