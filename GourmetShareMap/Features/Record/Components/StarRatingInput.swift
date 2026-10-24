@@ -1,12 +1,12 @@
 //
-//  StarRatingView.swift
+//  StarRatingInput.swift
 //  GourmetShareMap
 //
 
 import SwiftUI
 
 /// 1〜5 の星評価。0 は未評価。
-struct StarRatingView: View {
+struct StarRatingInput: View {
     @Binding var rating: Int
     var maxRating = 5
 
@@ -39,5 +39,5 @@ struct StarRatingView: View {
 
 #Preview {
     @Previewable @State var rating = 3
-    StarRatingView(rating: $rating)
+    StarRatingInput(rating: $rating)
 }

@@ -19,7 +19,7 @@ final class RecordViewModel {
     enum SearchState {
         case idle
         case searching
-        case loaded([StoreCandidate])
+        case loaded([NearbyShop])
         case failed(message: String, isPermissionDenied: Bool)
     }
 
@@ -30,7 +30,7 @@ final class RecordViewModel {
     }
 
     var photos: [RecordPhoto] = []
-    var selectedCandidate: StoreCandidate?
+    var selectedCandidate: NearbyShop?
     var rating = 0
     var memo = ""
 
@@ -43,7 +43,7 @@ final class RecordViewModel {
     private let locationService: LocationService
 
     init(
-        storeSearchService: any StoreSearchService = MockStoreSearchService(),
+        storeSearchService: any StoreSearchService = PlacesStoreSearchService(),
         locationService: LocationService = LocationService()
     ) {
         self.storeSearchService = storeSearchService

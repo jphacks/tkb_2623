@@ -28,7 +28,7 @@ struct RecordView: View {
                 }
 
                 section("評価") {
-                    StarRatingView(rating: $viewModel.rating)
+                    StarRatingInput(rating: $viewModel.rating)
                 }
 
                 section("メモ") {

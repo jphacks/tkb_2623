@@ -10,7 +10,7 @@ import SwiftUI
 struct StoreCandidatePicker: View {
     let state: RecordViewModel.SearchState
     let searchedCoordinate: CLLocationCoordinate2D?
-    @Binding var selection: StoreCandidate?
+    @Binding var selection: NearbyShop?
     let onRetry: () -> Void
 
     @State private var isExpanded = false
@@ -69,7 +69,7 @@ struct StoreCandidatePicker: View {
 
     // MARK: - Dropdown
 
-    private func dropdown(_ candidates: [StoreCandidate]) -> some View {
+    private func dropdown(_ candidates: [NearbyShop]) -> some View {
         VStack(spacing: 0) {
             Button {
                 withAnimation(.snappy) { isExpanded.toggle() }
@@ -125,7 +125,7 @@ struct StoreCandidatePicker: View {
         .cardBackground()
     }
 
-    private func candidateRow(_ candidate: StoreCandidate) -> some View {
+    private func candidateRow(_ candidate: NearbyShop) -> some View {
         HStack(spacing: 12) {
             Image(systemName: candidate.symbolName)
                 .font(.system(size: 18))
@@ -147,9 +147,8 @@ struct StoreCandidatePicker: View {
         }
     }
 
-    private func subtitle(for candidate: StoreCandidate) -> String {
-        var parts: [String] = []
-        if let category = candidate.category { parts.append(category) }
+    private func subtitle(for candidate: NearbyShop) -> String {
+        var parts = [candidate.category]
         if let searchedCoordinate {
             let meters = CLLocation(latitude: searchedCoordinate.latitude, longitude: searchedCoordinate.longitude)
                 .distance(from: CLLocation(latitude: candidate.latitude, longitude: candidate.longitude))
@@ -176,10 +175,10 @@ struct StoreCandidatePicker: View {
 }
 
 #Preview {
-    @Previewable @State var selection: StoreCandidate?
+    @Previewable @State var selection: NearbyShop?
     let candidates = [
-        StoreCandidate(googlePlaceId: "1", name: "麺屋 はる", category: "ラーメン・麺類", latitude: 35.7286, longitude: 139.7610),
-        StoreCandidate(googlePlaceId: "2", name: "中華 福来", category: "中華", latitude: 35.7290, longitude: 139.7615),
+        NearbyShop(placeID: "1", name: "麺屋 はる", latitude: 35.7286, longitude: 139.7610, category: "ラーメン・麺類"),
+        NearbyShop(placeID: "2", name: "中華 福来", latitude: 35.7290, longitude: 139.7615, category: "中華"),
     ]
     VStack(spacing: 16) {
         StoreCandidatePicker(

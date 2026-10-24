@@ -5,12 +5,11 @@
 
 import CoreLocation
 
-// TODO: PR-05（PlacesClient を使った検索）がマージされたら、RecordViewModel の既定値を本実装に差し替える。
-/// UI 確認用のダミー検索。渡された座標の周辺に固定の店舗を並べて返す。
+/// プレビュー・テスト用のダミー検索。渡された座標の周辺に固定の店舗を並べて返す。
 struct MockStoreSearchService: StoreSearchService {
     var returnsEmpty = false
 
-    func searchNearbyStores(around coordinate: CLLocationCoordinate2D) async throws -> [StoreCandidate] {
+    func searchNearbyStores(around coordinate: CLLocationCoordinate2D) async throws -> [NearbyShop] {
         try await Task.sleep(for: .milliseconds(600))
         guard !returnsEmpty else { return [] }
 
@@ -21,12 +20,12 @@ struct MockStoreSearchService: StoreSearchService {
             ("居酒屋 たぬき", "居酒屋・バー", 0.0022),
         ]
         return samples.enumerated().map { index, sample in
-            StoreCandidate(
-                googlePlaceId: "mock-place-\(index)",
+            NearbyShop(
+                placeID: "mock-place-\(index)",
                 name: sample.name,
-                category: sample.category,
                 latitude: coordinate.latitude + sample.offset,
-                longitude: coordinate.longitude + sample.offset / 2
+                longitude: coordinate.longitude + sample.offset / 2,
+                category: sample.category
             )
         }
     }
