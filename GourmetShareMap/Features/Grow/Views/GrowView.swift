@@ -146,15 +146,29 @@ struct GrowView: View {
                     .foregroundStyle(.appText.opacity(0.55))
                     .multilineTextAlignment(.center)
             } else {
-                TextField("例: 渋谷で静かなデート向けの和食", text: $freeText, axis: .vertical)
-                    .font(.system(size: 14.5))
-                    .focused($isFreeTextFocused)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background(.appCard, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .submitLabel(.search)
-                    .onSubmit { requestRecommend() }
-                    .onChange(of: freeText) { showsEmptyTextError = false }
+                Text("どんなお店に行きたい?")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.appText.opacity(0.55))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                TextField(
+                    "", text: $freeText, prompt: Text("例: 渋谷で静かなデート向けの和食").foregroundStyle(.appText.opacity(0.35)),
+                    axis: .vertical
+                )
+                .font(.system(size: 14.5))
+                .foregroundStyle(.appText)
+                .tint(.appPrimary)
+                .focused($isFreeTextFocused)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background(.appCard, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(isFreeTextFocused ? Color.appPrimary.opacity(0.6) : .appBorder, lineWidth: 1.5)
+                }
+                .submitLabel(.search)
+                .onSubmit { requestRecommend() }
+                .onChange(of: freeText) { showsEmptyTextError = false }
 
                 Button {
                     requestRecommend()
