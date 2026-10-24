@@ -34,8 +34,6 @@ struct ProfileView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    header
-
                     if viewModel.isLoading {
                         loadingView
                     } else if let errorMessage = viewModel.errorMessage {
@@ -67,13 +65,6 @@ struct ProfileView: View {
         }) {
             ProfileEditView()
         }
-    }
-
-    private var header: some View {
-        Text("04 プロフィール")
-            .font(.system(size: 20, weight: .bold))
-            .foregroundStyle(.black)
-            .padding(.top, 8)
     }
 
     private var loadingView: some View {

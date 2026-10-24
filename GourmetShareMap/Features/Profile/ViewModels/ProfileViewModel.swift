@@ -33,9 +33,15 @@ protocol ProfileCoverImagesDataSource {
     func coverImageURLs(storeIDs: [UUID], expiresIn: Int) async throws -> [UUID: URL]
 }
 
+/// ProfileViewModelが依存する、フレンド数の取得口。テストではフェイクに差し替える。
+protocol ProfileFriendsDataSource {
+    func fetchFriendCount() async throws -> Int
+}
+
 extension UserRepository: ProfileProfileDataSource {}
 extension RecordRepository: ProfileStoresDataSource {}
 extension ImageRepository: ProfileCoverImagesDataSource {}
+extension FriendRepository: ProfileFriendsDataSource {}
 
 @MainActor
 final class ProfileViewModel: ObservableObject {
@@ -43,7 +49,6 @@ final class ProfileViewModel: ObservableObject {
     @Published private(set) var bio: String?
     @Published private(set) var storeCount: Int = 0
     @Published private(set) var maxRepeatCount: Int = 0
-    // フレンド機能は別タスクで実装するため、DBアクセスせず常に0を返す。
     @Published private(set) var friendCount: Int = 0
     @Published private(set) var recentRecords: [ProfileRecord] = []
     @Published private(set) var isLoading = false
@@ -55,27 +60,31 @@ final class ProfileViewModel: ObservableObject {
     private let profileDataSource: any ProfileProfileDataSource
     private let storesDataSource: any ProfileStoresDataSource
     private let coverImagesDataSource: any ProfileCoverImagesDataSource
+    private let friendsDataSource: any ProfileFriendsDataSource
 
     // デフォルト引数の評価はnonisolatedなコンテキストで行われ、MainActor隔離の
-    // UserRepository()/RecordRepository()/ImageRepository()を直接呼べないため、init本体でnilの場合に生成する。
+    // UserRepository()/RecordRepository()/ImageRepository()/FriendRepository()を直接呼べないため、init本体でnilの場合に生成する。
     // 取得の開始はView側のタスク（ProfileView.body の.task）が呼ぶload()に委ねる。
     init(
         profileDataSource: (any ProfileProfileDataSource)? = nil,
         storesDataSource: (any ProfileStoresDataSource)? = nil,
-        coverImagesDataSource: (any ProfileCoverImagesDataSource)? = nil
+        coverImagesDataSource: (any ProfileCoverImagesDataSource)? = nil,
+        friendsDataSource: (any ProfileFriendsDataSource)? = nil
     ) {
         self.profileDataSource = profileDataSource ?? UserRepository()
         self.storesDataSource = storesDataSource ?? RecordRepository()
         self.coverImagesDataSource = coverImagesDataSource ?? ImageRepository()
+        self.friendsDataSource = friendsDataSource ?? FriendRepository()
     }
 
-    /// 自分のプロフィールと店舗記録を取得し、画面表示用の値に反映する。
+    /// 自分のプロフィール・店舗記録・フレンド数を取得し、画面表示用の値に反映する。
     func load() async {
         isLoading = true
         errorMessage = nil
         do {
             async let profile = profileDataSource.fetchMyProfile()
             async let stores = storesDataSource.fetchStores()
+            async let friends = loadFriendCount()
             let (fetchedProfile, fetchedStores) = try await (profile, stores)
 
             // 初回ログイン時にAppleから取得した名前がuser.nameに保存されるため、
@@ -84,6 +93,7 @@ final class ProfileViewModel: ObservableObject {
             bio = fetchedProfile.bio
             storeCount = fetchedStores.count
             maxRepeatCount = fetchedStores.map(\.repeatNum).max() ?? 0
+            friendCount = await friends
             // fetchStores()はcreated_at降順で返るため、先頭5件がそのまま「最近の記録」になる。
             let recentStores = Array(fetchedStores.prefix(5))
             let coverURLs = await loadCoverImageURLs(storeIDs: recentStores.map(\.id))
@@ -103,6 +113,15 @@ final class ProfileViewModel: ObservableObject {
             avatarURL = nil
         }
         isLoading = false
+    }
+
+    /// フレンド数。取得に失敗しても画面全体のエラーにはせず、0人として表示する。
+    private func loadFriendCount() async -> Int {
+        do {
+            return try await friendsDataSource.fetchFriendCount()
+        } catch {
+            return 0
+        }
     }
 
     /// 最近の記録の表紙写真URL。取得に失敗しても画面全体のエラーにはせず、
