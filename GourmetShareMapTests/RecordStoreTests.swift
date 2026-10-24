@@ -14,7 +14,13 @@ final class FakeStoreRecordRepository: StoreRecordRepository {
     var saveError: (any Error)?
     private(set) var savedInputs: [StoreSaveInput] = []
 
+    var currentUserID = UUID()
+
     func fetchStores() async throws -> [StoreRecord] { stored }
+
+    func fetchVisibleStores() async throws -> VisibleStores {
+        VisibleStores(currentUserID: currentUserID, stores: stored)
+    }
 
     func saveStore(_ input: StoreSaveInput) async throws -> StoreRecord {
         if let saveError { throw saveError }

@@ -23,6 +23,13 @@ enum StoreSaveError: LocalizedError, Equatable {
     }
 }
 
+/// マップに表示する店舗一覧と、その取得に使ったログインユーザーのID。
+/// 自分の店舗とフレンドの店舗をピンの色などで出し分けるために、IDを同梱する。
+nonisolated struct VisibleStores: Sendable {
+    let currentUserID: UUID
+    let stores: [StoreRecord]
+}
+
 @MainActor
 final class RecordRepository {
     private let client: SupabaseClient
@@ -51,6 +58,31 @@ final class RecordRepository {
                 .execute().value
             records.append(contentsOf: page)
             if page.count < pageSize { return records }
+        }
+    }
+
+    /// マップ向けの、自分とフレンド（自分がフォローしている相手）の店舗記録一覧。
+    /// フレンドの行は`store`のSELECT RLSポリシー（自分の行 or フォロー相手の行）で返るため、
+    /// クエリ側では`user_id`で絞り込まない。`fetchStores()`との違いはこの絞り込みの有無だけ。
+    /// `fetchStores()`と同様に座標がNULLの行も返すので、ピン表示側で座標のある行を選ぶ。
+    /// 自分の店舗とフレンドの店舗の判別用に、認証の往復を増やさず同じセッションの
+    /// ユーザーIDを`VisibleStores.currentUserID`として返す。
+    /// created_at降順・id昇順。Supabase標準の最大返却件数に合わせてページ取得する。
+    func fetchVisibleStores() async throws -> VisibleStores {
+        let currentUserID = try await client.auth.session.user.id
+        let pageSize = 1000
+        var records: [StoreRecord] = []
+        while true {
+            let page: [StoreRecord] = try await client.from("store")
+                .select()
+                .order("created_at", ascending: false)
+                .order("id", ascending: true)
+                .range(from: records.count, to: records.count + pageSize - 1)
+                .execute().value
+            records.append(contentsOf: page)
+            if page.count < pageSize {
+                return VisibleStores(currentUserID: currentUserID, stores: records)
+            }
         }
     }
 
