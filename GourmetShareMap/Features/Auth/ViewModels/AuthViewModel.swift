@@ -15,10 +15,11 @@ final class AuthViewModel: ObservableObject {
     // TODO: DB設計が決まったら、userテーブルの登録状況から初回かどうかを判定する。
     @Published private(set) var needsOnboarding = false
 
-    private let client = SupabaseManager.shared.client
+    private let client: SupabaseClient
     private var authStateTask: Task<Void, Never>?
 
-    init() {
+    init(client: SupabaseClient = SupabaseManager.shared.client) {
+        self.client = client
         authStateTask = Task {
             for await (_, session) in client.auth.authStateChanges {
                 self.session = session
