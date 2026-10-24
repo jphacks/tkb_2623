@@ -15,7 +15,7 @@ struct ContentView: View {
             if authViewModel.session != nil {
                 HomeView()
             } else {
-                SignInView()
+                LoginView()
             }
         }
         .environmentObject(authViewModel)

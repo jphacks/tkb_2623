@@ -39,8 +39,6 @@
 			membershipExceptions = (
 				App/.gitkeep,
 				Core/.gitkeep,
-				Features/Auth/ViewModels/.gitkeep,
-				Features/Auth/Views/.gitkeep,
 				Features/Friend/Components/.gitkeep,
 				Features/Friend/ViewModels/.gitkeep,
 				Features/Friend/Views/.gitkeep,
