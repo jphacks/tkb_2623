@@ -11,6 +11,7 @@ struct GrowView: View {
     @Environment(RecordStore.self) private var recordStore
     @State private var viewModel = GrowViewModel()
     @State private var freeText = ""
+    @State private var showsEmptyTextError = false
     @FocusState private var isFreeTextFocused: Bool
 
     private var progress: MascotProgress {
@@ -153,6 +154,7 @@ struct GrowView: View {
                     .background(.appCard, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .submitLabel(.search)
                     .onSubmit { requestRecommend() }
+                    .onChange(of: freeText) { showsEmptyTextError = false }
 
                 Button {
                     requestRecommend()
@@ -177,7 +179,12 @@ struct GrowView: View {
                 .disabled(viewModel.isRecommending || !canRecommend)
                 .opacity(canRecommend ? 1 : 0.45)
 
-                if let message = viewModel.recommendErrorMessage {
+                if showsEmptyTextError {
+                    Text("行きたい気分や食べたいものを入力してください")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.appPrimary)
+                        .multilineTextAlignment(.center)
+                } else if let message = viewModel.recommendErrorMessage {
                     Text(message)
                         .font(.system(size: 12))
                         .foregroundStyle(.appPrimary)
@@ -195,7 +202,11 @@ struct GrowView: View {
 
     private func requestRecommend() {
         let text = freeText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else {
+            showsEmptyTextError = true
+            return
+        }
+        showsEmptyTextError = false
         isFreeTextFocused = false
         Task { await viewModel.recommend(freeText: text, records: recordStore.records) }
     }
