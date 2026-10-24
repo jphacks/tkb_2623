@@ -24,7 +24,7 @@ struct StoreCandidatePicker: View {
                     Image(systemName: "photo.badge.plus")
                         .font(.title2)
                         .foregroundStyle(.appText.opacity(0.5))
-                    Text("写真を追加すると、近くのお店が候補に表示されます")
+                    Text("写真を追加すると、候補のお店が表示されます")
                         .font(.subheadline)
                         .foregroundStyle(.appText.opacity(0.7))
                         .multilineTextAlignment(.center)
