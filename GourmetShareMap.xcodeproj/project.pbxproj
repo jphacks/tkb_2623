@@ -448,6 +448,9 @@
 				DEVELOPMENT_TEAM = Z27QT2L226;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "お店で食べたご飯を撮影して記録するためにカメラを使用します。";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "現在地の近くにあるお店の候補を表示するために位置情報を使用します。";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "記録に添付する写真を選択し、撮影場所からお店の候補を探すために写真を使用します。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -481,6 +484,9 @@
 				DEVELOPMENT_TEAM = Z27QT2L226;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "お店で食べたご飯を撮影して記録するためにカメラを使用します。";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "現在地の近くにあるお店の候補を表示するために位置情報を使用します。";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "記録に添付する写真を選択し、撮影場所からお店の候補を探すために写真を使用します。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
