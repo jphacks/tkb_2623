@@ -45,7 +45,7 @@ alter default privileges in schema public grant all on tables to authenticated, 
 SQL
 
 echo '既存schema.sqlを適用します。'
-docker exec -i "$container_name" psql -U postgres -v ON_ERROR_STOP=1 < "$supabase_dir/schema.sql"
+docker exec -i "$container_name" psql -U postgres -v ON_ERROR_STOP=1 < "$supabase_dir/migrations/20261024025750_initial_schema.sql"
 
 echo '保存・フレンド共有・RLSをテストします（テストデータはROLLBACK）。'
 docker exec -i "$container_name" psql -U postgres -v ON_ERROR_STOP=1 < "$script_dir/store.sql"
