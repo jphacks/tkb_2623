@@ -1,0 +1,5 @@
+// GoogleMapsConfig.swift にコピーし、iOS用のキーを設定してください。
+// Google CloudでBundle IDと使用APIの制限を設定してください。
+enum GoogleMapsConfig {
+    static let apiKey = ""
+}

@@ -1,6 +1,0 @@
-
-// このファイルを GoogleMapConfig.swift としてコピーし、実際のAPIキーを設定してください。
-// GoogleMapConfig.swift は .gitignore で除外されています。
-enum GoogleMapConfig {
-    static let apiKey = "YOUR_GOOGLE_MAPS_API_KEY"
-}
