@@ -165,10 +165,6 @@ struct ProfileView: View {
             Divider().frame(height: 36)
 
             ProfileStatColumn(value: "\(viewModel.friendCount)", label: "フレンド")
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.black.opacity(0.3))
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 12)
