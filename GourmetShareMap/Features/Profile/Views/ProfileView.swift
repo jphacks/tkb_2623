@@ -35,6 +35,9 @@ struct ProfileView: View {
                 .padding(.bottom, 24)
             }
         }
+        .task {
+            await viewModel.load()
+        }
     }
 
     private var header: some View {
