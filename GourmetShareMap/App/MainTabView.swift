@@ -17,7 +17,7 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("マップ", systemImage: "map", value: .map) {
-                MapView()
+                MapView(onCreateRecord: { selectedTab = .record })
             }
 
             Tab("登録", systemImage: "camera", value: .record) {

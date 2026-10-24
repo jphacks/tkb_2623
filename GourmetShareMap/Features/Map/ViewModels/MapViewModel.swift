@@ -3,26 +3,41 @@
 //  GourmetShareMap
 //
 
-import Combine
-import CoreGraphics
+import CoreLocation
 import Foundation
+import Observation
 
-enum ShopCategory: String, CaseIterable, Identifiable {
-    case all = "すべて"
-    case ramen = "ラーメン"
-    case chinese = "中華"
-    case western = "洋食"
-    case cafe = "カフェ"
+/// カテゴリ絞り込みの選択肢。`PlaceCategoryClassifier` の13分類に「すべて」を加えたもの。
+enum StoreCategoryFilter: Identifiable, Hashable {
+    case all
+    case category(String)
 
-    var id: String { rawValue }
+    static let allFilters: [StoreCategoryFilter] =
+        [.all] + PlaceCategoryClassifier.categoryNames.map(StoreCategoryFilter.category)
+
+    var id: String { title }
+
+    var title: String {
+        switch self {
+        case .all: "すべて"
+        case let .category(name): name
+        }
+    }
 
     var symbolName: String {
         switch self {
-        case .all: "square.grid.2x2"
-        case .ramen: "takeoutbag.and.cup.and.straw.fill"
-        case .chinese: "frying.pan.fill"
-        case .western: "fork.knife"
-        case .cafe: "cup.and.saucer.fill"
+        case .all: "line.3.horizontal.decrease"
+        case let .category(name): StoreCategoryStyle.symbolName(for: name)
+        }
+    }
+
+    /// 「すべて」以外が選ばれている=絞り込みが効いている状態。
+    var isActive: Bool { self != .all }
+
+    func matches(_ category: String) -> Bool {
+        switch self {
+        case .all: true
+        case let .category(name): name == category
         }
     }
 }
@@ -35,85 +50,87 @@ enum OwnerFilter: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-enum ShopOwner {
-    case me
-    case friend
-}
-
-struct MapLandmark: Identifiable {
-    let id = UUID()
-    let name: String
-    let relativePosition: CGPoint
-}
-
-struct MapShop: Identifiable {
-    let id = UUID()
+/// マップに表示する1店舗。`store` の1行に対応し、座標を持つ行のみを表す。
+struct MapStore: Identifiable, Equatable {
+    let id: UUID
     let name: String
     let category: String
-    let rating: Double
+    /// 未評価の記録では nil。
+    let rating: Double?
     let repeatCount: Int
-    let owner: ShopOwner
-    /// フレンドも訪問済みで、ピンにフレンドアイコンを重ねて表示するかどうか。
+    let memo: String?
+    /// 編集保存時に既存値を消さないよう保持する。保存は全項目の上書きのため。
+    let googlePlaceID: String?
+    let latitude: Double
+    let longitude: Double
+    /// 自分の記録か、フォロー中のフレンドの記録か。
+    let isMine: Bool
+    /// 同じGoogle店舗を自分とフレンドの両方が登録しており、ピンにフレンドアイコンを重ねるかどうか。
     let sharedWithFriend: Bool
-    // TODO: Google Maps API導入後、CLLocationCoordinate2D(緯度経度)に置き換える。
-    // 現状は地図が未実装のため、プレースホルダー上の相対座標(0〜1)で仮配置している。
-    let relativePosition: CGPoint
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
 }
 
+/// マップの絞り込みと選択状態を持つ。
+/// 店舗データ自体は`RecordStore`が一元管理するため、ここでは取得せず変換と絞り込みだけを行う。
 @MainActor
-final class MapViewModel: ObservableObject {
-    @Published var selectedCategory: ShopCategory = .all
-    @Published var ownerFilter: OwnerFilter = .both
-    @Published var selectedShopID: MapShop.ID?
+@Observable
+final class MapViewModel {
+    var selectedCategory: StoreCategoryFilter = .all
+    var ownerFilter: OwnerFilter = .both
+    var selectedStoreID: MapStore.ID?
 
-    let landmarks: [MapLandmark]
-    @Published private(set) var shops: [MapShop]
+    /// `RecordStore` のキャッシュをピンとして置ける形へ変換する。
+    /// 座標がNULLの行はマップに置けないため除外する。
+    /// 同じ `google_place_id` を自分とフレンドの両方が登録している店舗には共有フラグを立てる。
+    func stores(from visible: VisibleStores?) -> [MapStore] {
+        guard let visible else { return [] }
 
-    // TODO: 店舗/訪問記録テーブルにデータが入り次第、StoreRepository経由の取得に差し替える。
-    // 現状はDBが空のため仮データを表示している。
-    init(shops: [MapShop] = MapMockData.shops, landmarks: [MapLandmark] = MapMockData.landmarks) {
-        self.shops = shops
-        self.landmarks = landmarks
-        self.selectedShopID = shops.first?.id
-    }
+        let ownPlaceIDs = Set(visible.stores.lazy
+            .filter { $0.userID == visible.currentUserID }
+            .compactMap(\.googlePlaceID))
+        let friendPlaceIDs = Set(visible.stores.lazy
+            .filter { $0.userID != visible.currentUserID }
+            .compactMap(\.googlePlaceID))
+        let sharedPlaceIDs = ownPlaceIDs.intersection(friendPlaceIDs)
 
-    var filteredShops: [MapShop] {
-        shops.filter { shop in
-            let categoryMatches = selectedCategory == .all || shop.category == selectedCategory.rawValue
-            let ownerMatches: Bool
-            switch ownerFilter {
-            case .me: ownerMatches = shop.owner == .me
-            case .friend: ownerMatches = shop.owner == .friend
-            case .both: ownerMatches = true
-            }
-            return categoryMatches && ownerMatches
+        return visible.stores.compactMap { record in
+            guard let latitude = record.latitude, let longitude = record.longitude else { return nil }
+            return MapStore(
+                id: record.id,
+                name: record.name,
+                category: record.category ?? "その他",
+                rating: record.reputation,
+                repeatCount: record.repeatNum,
+                memo: record.memo,
+                googlePlaceID: record.googlePlaceID,
+                latitude: latitude,
+                longitude: longitude,
+                isMine: record.userID == visible.currentUserID,
+                sharedWithFriend: record.googlePlaceID.map(sharedPlaceIDs.contains) ?? false
+            )
         }
     }
 
-    var selectedShop: MapShop? {
-        shops.first { $0.id == selectedShopID }
+    func filtered(_ stores: [MapStore]) -> [MapStore] {
+        stores.filter { store in
+            guard selectedCategory.matches(store.category) else { return false }
+            switch ownerFilter {
+            case .me: return store.isMine
+            case .friend: return !store.isMine
+            case .both: return true
+            }
+        }
     }
 
-    func selectShop(_ shop: MapShop) {
-        selectedShopID = shop.id
+    func selectedStore(in stores: [MapStore]) -> MapStore? {
+        guard let selectedStoreID else { return nil }
+        return stores.first { $0.id == selectedStoreID }
     }
-}
 
-nonisolated enum MapMockData {
-    static let shops: [MapShop] = [
-        MapShop(name: "麺屋 はる", category: "ラーメン", rating: 4, repeatCount: 3, owner: .me, sharedWithFriend: true, relativePosition: CGPoint(x: 0.47, y: 0.36)),
-        MapShop(name: "支那そば 景", category: "ラーメン", rating: 3.5, repeatCount: 1, owner: .me, sharedWithFriend: false, relativePosition: CGPoint(x: 0.22, y: 0.20)),
-        MapShop(name: "中華食堂 龍", category: "中華", rating: 4.5, repeatCount: 5, owner: .me, sharedWithFriend: true, relativePosition: CGPoint(x: 0.68, y: 0.18)),
-        MapShop(name: "洋食キッチン 青", category: "洋食", rating: 4, repeatCount: 2, owner: .friend, sharedWithFriend: false, relativePosition: CGPoint(x: 0.80, y: 0.46)),
-        MapShop(name: "らーめん 直久", category: "ラーメン", rating: 3, repeatCount: 1, owner: .friend, sharedWithFriend: false, relativePosition: CGPoint(x: 0.32, y: 0.56)),
-        MapShop(name: "喫茶 根津", category: "カフェ", rating: 4, repeatCount: 2, owner: .friend, sharedWithFriend: false, relativePosition: CGPoint(x: 0.64, y: 0.66)),
-        MapShop(name: "麺や 竹", category: "ラーメン", rating: 4, repeatCount: 2, owner: .me, sharedWithFriend: false, relativePosition: CGPoint(x: 0.12, y: 0.62)),
-    ]
-
-    static let landmarks: [MapLandmark] = [
-        MapLandmark(name: "千駄木駅", relativePosition: CGPoint(x: 0.24, y: 0.28)),
-        MapLandmark(name: "谷中銀座", relativePosition: CGPoint(x: 0.16, y: 0.42)),
-        MapLandmark(name: "上野公園", relativePosition: CGPoint(x: 0.85, y: 0.30)),
-        MapLandmark(name: "根津駅", relativePosition: CGPoint(x: 0.24, y: 0.72)),
-    ]
+    func select(storeID: MapStore.ID?) {
+        selectedStoreID = storeID
+    }
 }

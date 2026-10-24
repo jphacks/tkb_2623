@@ -19,6 +19,9 @@ enum PlaceCategoryClassifier {
         ("その他", "restaurant fusion_restaurant fine_dining_restaurant vegan_restaurant vegetarian_restaurant halal_restaurant"),
     ].map { (name: $0.0, types: Set($0.1.split(separator: " ").map(String.init))) }
 
+    /// 13分類の名前を優先順位どおりに並べたもの。マップの絞り込みUIの選択肢として使う。
+    static let categoryNames: [String] = categoryRules.map(\.name)
+
     static func category(primaryType: String?, types: [String]) -> String {
         // 主カテゴリが具体的なら優先する。汎用のrestaurant等は詳細typesで補完する。
         let specificRules = categoryRules.dropLast()

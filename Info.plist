@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  GENERATE_INFOPLIST_FILE = YES のまま、ビルド設定では表現できないキーだけをここに置く。
+  他のキーは INFOPLIST_KEY_* から自動生成され、このファイルにマージされる。
+-->
+<plist version="1.0">
+<dict>
+	<!--
+	  Maps SDK for iOSの要件。地図上のGoogleロゴをタップしたときに
+	  Googleマップアプリ/Chromeを開けるようにするため、照会するURLスキームを宣言する。
+	-->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+		<string>googlechromes</string>
+	</array>
+</dict>
+</plist>

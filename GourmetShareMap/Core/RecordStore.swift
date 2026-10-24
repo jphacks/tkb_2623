@@ -10,6 +10,8 @@ import UIKit
 /// 店舗記録の保存・取得（`RecordRepository`）。テストで差し替えられるようにプロトコルにしている。
 protocol StoreRecordRepository {
     func fetchStores() async throws -> [StoreRecord]
+    /// マップが使う、自分＋フォロー中フレンドの店舗。
+    func fetchVisibleStores() async throws -> VisibleStores
     func saveStore(_ input: StoreSaveInput) async throws -> StoreRecord
 }
 
@@ -52,6 +54,12 @@ final class RecordStore {
     private(set) var records: [StoreRecord] = []
     private(set) var loadState: LoadState = .idle
 
+    /// マップ用の、自分＋フォロー中フレンドの店舗。
+    /// `records` と別に持つのは、含まれる範囲が違うため。
+    /// フレンドの記録はこちらにしか入らず、プロフィールなど自分の記録だけを扱う画面は `records` を使う。
+    private(set) var visibleStores: VisibleStores?
+    private(set) var visibleLoadState: LoadState = .idle
+
     private let recordRepository: any StoreRecordRepository
     private let imageUploader: any RecordImageUploading
 
@@ -71,6 +79,17 @@ final class RecordStore {
             loadState = .loaded
         } catch {
             loadState = .failed(error.localizedDescription)
+        }
+    }
+
+    /// マップ用の一覧を取り込む。
+    func loadVisible() async {
+        visibleLoadState = .loading
+        do {
+            visibleStores = try await recordRepository.fetchVisibleStores()
+            visibleLoadState = .loaded
+        } catch {
+            visibleLoadState = .failed(error.localizedDescription)
         }
     }
 
@@ -130,5 +149,13 @@ final class RecordStore {
     private func upsertCache(_ store: StoreRecord) {
         records.removeAll { $0.id == store.id }
         records.insert(store, at: 0)
+
+        // 保存した記録がマップにもすぐ反映されるようにする。未取得のときは
+        // loadVisible()がまとめて取り込むので、ここでは何もしない。
+        guard let visible = visibleStores else { return }
+        var stores = visible.stores
+        stores.removeAll { $0.id == store.id }
+        stores.insert(store, at: 0)
+        visibleStores = VisibleStores(currentUserID: visible.currentUserID, stores: stores)
     }
 }
