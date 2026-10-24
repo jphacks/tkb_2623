@@ -12,6 +12,8 @@ struct ProfileRecord: Identifiable {
     let category: String
     let rating: Double
     let repeatCount: Int
+    /// 表紙（最初にアップロードした写真）の署名付きURL。写真が無い・取得失敗時は nil。
+    var coverImageURL: URL?
 }
 
 /// ProfileViewModelが依存する、自分のプロフィール取得口。テストではフェイクに差し替える。
@@ -26,8 +28,14 @@ protocol ProfileStoresDataSource {
     func fetchStores() async throws -> [StoreRecord]
 }
 
+/// ProfileViewModelが依存する、店舗の表紙写真URL取得口。テストではフェイクに差し替える。
+protocol ProfileCoverImagesDataSource {
+    func coverImageURLs(storeIDs: [UUID], expiresIn: Int) async throws -> [UUID: URL]
+}
+
 extension UserRepository: ProfileProfileDataSource {}
 extension RecordRepository: ProfileStoresDataSource {}
+extension ImageRepository: ProfileCoverImagesDataSource {}
 
 @MainActor
 final class ProfileViewModel: ObservableObject {
@@ -46,16 +54,19 @@ final class ProfileViewModel: ObservableObject {
 
     private let profileDataSource: any ProfileProfileDataSource
     private let storesDataSource: any ProfileStoresDataSource
+    private let coverImagesDataSource: any ProfileCoverImagesDataSource
 
     // デフォルト引数の評価はnonisolatedなコンテキストで行われ、MainActor隔離の
-    // UserRepository()/RecordRepository()を直接呼べないため、init本体でnilの場合に生成する。
+    // UserRepository()/RecordRepository()/ImageRepository()を直接呼べないため、init本体でnilの場合に生成する。
     // 取得の開始はView側のタスク（ProfileView.body の.task）が呼ぶload()に委ねる。
     init(
         profileDataSource: (any ProfileProfileDataSource)? = nil,
-        storesDataSource: (any ProfileStoresDataSource)? = nil
+        storesDataSource: (any ProfileStoresDataSource)? = nil,
+        coverImagesDataSource: (any ProfileCoverImagesDataSource)? = nil
     ) {
         self.profileDataSource = profileDataSource ?? UserRepository()
         self.storesDataSource = storesDataSource ?? RecordRepository()
+        self.coverImagesDataSource = coverImagesDataSource ?? ImageRepository()
     }
 
     /// 自分のプロフィールと店舗記録を取得し、画面表示用の値に反映する。
@@ -74,12 +85,15 @@ final class ProfileViewModel: ObservableObject {
             storeCount = fetchedStores.count
             maxRepeatCount = fetchedStores.map(\.repeatNum).max() ?? 0
             // fetchStores()はcreated_at降順で返るため、先頭5件がそのまま「最近の記録」になる。
-            recentRecords = fetchedStores.prefix(5).map { store in
+            let recentStores = Array(fetchedStores.prefix(5))
+            let coverURLs = await loadCoverImageURLs(storeIDs: recentStores.map(\.id))
+            recentRecords = recentStores.map { store in
                 ProfileRecord(
                     storeName: store.name,
                     category: store.category ?? "未分類",
                     rating: store.reputation ?? 0,
-                    repeatCount: store.repeatNum
+                    repeatCount: store.repeatNum,
+                    coverImageURL: coverURLs[store.id]
                 )
             }
 
@@ -89,6 +103,16 @@ final class ProfileViewModel: ObservableObject {
             avatarURL = nil
         }
         isLoading = false
+    }
+
+    /// 最近の記録の表紙写真URL。取得に失敗しても画面全体のエラーにはせず、
+    /// 各行は固定アイコンにフォールバックする。
+    private func loadCoverImageURLs(storeIDs: [UUID]) async -> [UUID: URL] {
+        do {
+            return try await coverImagesDataSource.coverImageURLs(storeIDs: storeIDs, expiresIn: 3600)
+        } catch {
+            return [:]
+        }
     }
 
     /// 保存済みのprofile_imageパスから署名付きURLを取得する。
