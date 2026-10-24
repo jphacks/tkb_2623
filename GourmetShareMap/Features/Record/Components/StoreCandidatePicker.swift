@@ -139,9 +139,12 @@ struct StoreCandidatePicker: View {
 
     private func candidateRow(_ candidate: NearbyShop) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: candidate.symbolName)
-                .font(.system(size: 18))
+            Image(candidate.iconImage)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 26, height: 26)
                 .foregroundStyle(.appPrimary)
+                .accessibilityHidden(true)
                 .frame(width: 44, height: 44)
                 .background(.appPrimary.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 

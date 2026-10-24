@@ -4,6 +4,7 @@
 //
 
 import CoreLocation
+import DeveloperToolsSupport
 
 /// 位置を受け取って周辺の店舗候補を返すインターフェース。
 ///
@@ -28,17 +29,21 @@ extension NearbyShop: Identifiable {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
-    /// 候補リストで店舗アイコンとして使う SF Symbol（`ShopCategory` の分類名に対応）。
-    var symbolName: String {
+    /// 候補リストで店舗アイコンとして使う画像（`ShopCategory` の分類名に対応。Assets.xcassets）。
+    /// 専用アイコンのないカテゴリ（中華・アジア・エスニック・その他）は `others` を使う。
+    var iconImage: ImageResource {
         switch category {
-        case "ラーメン・麺類": "takeoutbag.and.cup.and.straw.fill"
-        case "カフェ・喫茶": "cup.and.saucer.fill"
-        case "パン": "basket.fill"
-        case "スイーツ": "birthday.cake.fill"
-        case "居酒屋・バー": "wineglass.fill"
-        case "焼肉・肉料理": "flame.fill"
-        case "和食": "fish.fill"
-        default: "fork.knife"
+        case "和食": .sushi
+        case "ラーメン・麺類": .ramen
+        case "焼肉・肉料理": .steak
+        case "カレー": .curry
+        case "洋食・西洋料理": .pizza
+        case "ファストフード・食堂": .hamburger
+        case "カフェ・喫茶": .cafe
+        case "パン": .bakery
+        case "スイーツ": .sweets
+        case "居酒屋・バー": .bar
+        default: .others
         }
     }
 }
