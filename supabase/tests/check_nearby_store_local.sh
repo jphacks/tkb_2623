@@ -22,12 +22,12 @@ docker info >/dev/null 2>&1 || { echo 'Dockerを起動し、実行権限を確�
 
 if [[ "$mode" == --live && -z "${GOOGLE_MAPS_API_KEY:-}" ]]; then
     # キーを引数・ログ・一時Swiftソースへ書き出さない。
-    GOOGLE_MAPS_API_KEY="$(python3 - "$repo_dir/GourmetShareMap/Services/Places/GoogleMapConfig.swift" <<'PY'
+    GOOGLE_MAPS_API_KEY="$(python3 - "$repo_dir/GourmetShareMap/Services/Places/GoogleMapsConfig.swift" <<'PY'
 import pathlib, re, sys
 path = pathlib.Path(sys.argv[1])
 match = re.search(r'\bstatic\s+let\s+apiKey\s*=\s*"([^"\n]+)"', path.read_text()) if path.exists() else None
 if not match or match[1] == 'YOUR_GOOGLE_MAPS_API_KEY':
-    sys.exit('GOOGLE_MAPS_API_KEY環境変数、またはGoogleMapConfig.swiftのapiKeyを設定してください。')
+    sys.exit('GOOGLE_MAPS_API_KEY環境変数、またはGoogleMapsConfig.swiftのapiKeyを設定してください。')
 print(match[1])
 PY
 )"
@@ -39,12 +39,12 @@ mkdir -p "$build_dir/Sources/Check"
 cp "$repo_dir/GourmetShareMap/Models/StoreRecord.swift" \
    "$repo_dir/GourmetShareMap/Repositories/RecordRepository.swift" \
    "$repo_dir/GourmetShareMap/Services/Places/FindNearestShop.swift" \
-   "$repo_dir/GourmetShareMap/Services/Places/ShopCategory.swift" \
+   "$repo_dir/GourmetShareMap/Services/Places/PlaceCategoryClassifier.swift" \
    "$script_dir/nearby-store/IntegrationCheck.swift" "$build_dir/Sources/Check/"
 cat > "$build_dir/Sources/Check/LocalConfig.swift" <<'SWIFT'
 import Foundation
 import Supabase
-enum GoogleMapConfig {
+enum GoogleMapsConfig {
     static var apiKey: String { ProcessInfo.processInfo.environment["GOOGLE_MAPS_API_KEY"] ?? "" }
 }
 @MainActor
@@ -104,7 +104,7 @@ grant usage on schema auth to authenticated, anon;
 grant execute on function auth.uid() to authenticated, anon;
 alter default privileges in schema public grant all on tables to authenticated, anon;
 SQL
-docker exec -i "$db_container" psql -U postgres -v ON_ERROR_STOP=1 < "$repo_dir/supabase/schema.sql"
+docker exec -i "$db_container" psql -U postgres -v ON_ERROR_STOP=1 < "$repo_dir/supabase/migrations/20261024025750_initial_schema.sql"
 docker exec -i "$db_container" psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'
 insert into auth.users (id, email) values ('c0240000-0000-4000-8000-000000000001', 'nearby-check@example.invalid');
 insert into public."user" (id, user_name, name) values ('c0240000-0000-4000-8000-000000000001', 'nearby_check', '結合テストユーザー');
