@@ -1,12 +1,12 @@
 //
-//  SignInView.swift
+//  LoginView.swift
 //  GourmetShareMap
 //
 
 import AuthenticationServices
 import SwiftUI
 
-struct SignInView: View {
+struct LoginView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var currentNonce: String?
 
@@ -65,6 +65,6 @@ struct SignInView: View {
 }
 
 #Preview {
-    SignInView()
+    LoginView()
         .environmentObject(AuthViewModel())
 }
