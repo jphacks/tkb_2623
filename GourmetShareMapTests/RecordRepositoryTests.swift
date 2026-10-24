@@ -256,6 +256,69 @@ struct RecordRepositoryTests {
         #expect(saved.repeatNum == 0)
     }
 
+    @Test func fetchStoresReturnsFullRecordsWithOwnerAndStableOrdering() async throws {
+        let rows = Data("[\(recordJSON()),\(recordJSON())]".utf8)
+        let (repository, session) = try await makeRepository(listResponse: rows)
+        defer { session.invalidateAndCancel() }
+        let result = try await repository.fetchStores()
+        #expect(result.count == 2)
+        #expect(result.first?.latitude == 35)
+        #expect(result.first?.memo == "また行きたい")
+        let request = try #require(StoresMockURLProtocol.requests.last)
+        #expect(query(request, "select") == "*")
+        #expect(query(request, "user_id")?.lowercased() == "eq.\(userID.uuidString.lowercased())")
+        #expect(query(request, "order") == "created_at.desc.nullslast,id.asc.nullslast")
+        #expect(query(request, "offset") == "0")
+        #expect(query(request, "limit") == "1000")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-access-token")
+    }
+
+    @Test func fetchStoresEmptyAndNullableRecords() async throws {
+        let (empty, session) = try await makeRepository(listResponse: Data("[]".utf8))
+        defer { session.invalidateAndCancel() }
+        #expect(try await empty.fetchStores().isEmpty)
+        let json = recordJSON().replacingOccurrences(of: "\"latitude\":35", with: "\"latitude\":null")
+            .replacingOccurrences(of: "\"category\":\"カフェ・喫茶\"", with: "\"category\":null")
+        let (nullable, otherSession) = try await makeRepository(listResponse: Data("[\(json)]".utf8))
+        defer { otherSession.invalidateAndCancel() }
+        let rows = try await nullable.fetchStores()
+        #expect(rows.first?.latitude == nil)
+        #expect(rows.first?.category == nil)
+    }
+
+    @Test func fetchStoresRequiresAuthentication() async throws {
+        let (repository, session) = try await makeRepository(signedIn: false)
+        defer { session.invalidateAndCancel() }
+        await #expect(throws: AuthError.self) { try await repository.fetchStores() }
+        #expect(StoresMockURLProtocol.requests.isEmpty)
+    }
+
+    @Test func fetchStoresPropagatesErrors() async throws {
+        let (denied, session) = try await makeRepository(status: 403, listResponse: Data(#"{"code":"42501","message":"denied"}"#.utf8))
+        defer { session.invalidateAndCancel() }
+        await #expect(throws: PostgrestError.self) { try await denied.fetchStores() }
+        let (invalid, otherSession) = try await makeRepository(listResponse: Data("[{}]".utf8))
+        defer { otherSession.invalidateAndCancel() }
+        await #expect(throws: DecodingError.self) { try await invalid.fetchStores() }
+        let (offline, offlineSession) = try await makeRepository(networkError: true)
+        defer { offlineSession.invalidateAndCancel() }
+        await #expect(throws: URLError.self) { try await offline.fetchStores() }
+    }
+
+    @Test func fetchStoresContinuesAfterFullPage() async throws {
+        let firstPage = Data(("[" + Array(repeating: recordJSON(), count: 1000).joined(separator: ",") + "]").utf8)
+        let (repository, session) = try await makeRepository(listResponse: firstPage)
+        defer { session.invalidateAndCancel() }
+        StoresMockURLProtocol.reset { request in
+            let offset = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "offset" }?.value
+            return (200, offset == "0" ? firstPage : Data("[]".utf8))
+        }
+        #expect(try await repository.fetchStores().count == 1000)
+        #expect(StoresMockURLProtocol.requests.count == 2)
+        #expect(query(try #require(StoresMockURLProtocol.requests.last), "offset") == "1000")
+    }
+
     private func input() -> StoreSaveInput {
         StoreSaveInput(name: " 喫茶テスト\n", category: "カフェ・喫茶", reputation: 4,
                        googlePlaceID: " place-123 ", memo: "また行きたい", repeatNum: 2,
@@ -272,7 +335,7 @@ struct RecordRepositoryTests {
 
     private func makeRepository(
         signedIn: Bool = true, status: Int = 200, response: Data? = nil, networkError: Bool = false,
-        existingIDs: [UUID] = []
+        existingIDs: [UUID] = [], listResponse: Data? = nil
     ) async throws -> (RecordRepository, URLSession) {
         let record = response ?? Data(recordJSON().utf8)
         let savedID = storeID
@@ -287,6 +350,7 @@ struct RecordRepositoryTests {
             if request.url?.path == "/auth/v1/token" { return (200, auth) }
             guard request.url?.path == "/rest/v1/store" else { throw URLError(.unsupportedURL) }
             if networkError { throw URLError(.notConnectedToInternet) }
+            if request.httpMethod == "GET", let listResponse { return (status, listResponse) }
             if request.httpMethod == "GET", status == 200 {
                 let hasInserted = StoresMockURLProtocol.requests.contains { $0.httpMethod == "POST" }
                 let ids = hasInserted ? [savedID] : existingIDs

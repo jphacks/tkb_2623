@@ -67,7 +67,7 @@ DBのポートは公開せず、終了時に一時DB・コンテナを削除し�
 
 ### Swift Testing
 
-MacのXcodeで`SupabaseConfig.swift.example`と`GoogleMapConfig.swift.example`をもとに
+MacのXcodeで`SupabaseConfig.swift.example`と`GoogleMapsConfig.swift.example`をもとに
 ローカル設定ファイルを準備し、依存パッケージを解決してから、
 `GourmetShareMapTests`の`RecordRepositoryTests`を実行してください。
 テストは専用のインメモリ認証ストレージとURLProtocolを使い、実際の認証・DBへ接続しません。
@@ -93,7 +93,7 @@ Docker・Swift 6.2以上・Python 3・curlを用意し、リポジトリのル�
 bash supabase/tests/check_nearby_store_local.sh --live 35.713329 139.7617112
 ```
 
-APIキーは`GOOGLE_MAPS_API_KEY`環境変数、または既存の`GoogleMapConfig.swift`に設定します。
+APIキーは`GOOGLE_MAPS_API_KEY`環境変数、または既存の`GoogleMapsConfig.swift`に設定します。
 実GoogleのNearby Searchを1回呼び出すため、Places API (New)を有効にしたキーが必要で、
 API利用料金が発生する場合があります。キーはログや一時ソースへ出力しません。
 
@@ -150,3 +150,122 @@ iOSアプリ全体のビルドとシミュレータテストにはMacとXcodeが
 - Nearby Searchの結合テストは、実Google APIモードとGoogleモックモードの両方で、
   最寄り店舗の選択・ローカル実DBへの登録・再取得・同じ行の更新が成功しました。
 - 実際のSupabaseプロジェクトへの操作、iOSアプリ全体のビルド、Xcodeシミュレータテストは未実行です。
+
+## マップ・プロフィール向けの店舗一覧
+
+```swift
+let records = try await RecordRepository().fetchStores()
+```
+
+ログインユーザー自身の店舗を `created_at` 降順・同日時は `id` 昇順で返します。
+返却型は保存時と共通の `[StoreRecord]` です。座標がNULLの記録も返すため、
+マップでは座標のある記録を選び、プロフィールでは全記録を表示できます。
+0件は空配列、認証・通信・DB・デコードの失敗はthrowします。
+
+Supabaseの標準返却上限1000件に合わせ、1000件ずつ取得します。
+サーバーの「Max Rows」は1000以上を前提とします。ページ取得中の並行更新について
+スナップショット一貫性は保証しません。
+
+Swift 6.2以上・Python 3で、現行ソースの保存・一覧テストをLinux/Macから実行できます。
+初回はSDK 2.55.4の依存解決が必要です。実際の認証・DBへの接続やAPIキーは不要です。
+
+```sh
+bash scripts/check_repositories.sh
+bash supabase/tests/check_repository_db.sh
+```
+
+後者はDocker必須で、一時PostgreSQL 17に既存schema.sqlを適用し、保存・一覧・RLSを検証します。
+一時DBは終了時に削除し、既存DBは変更しません。Storageサービスは起動しません。
+
+`REPOSITORY_TEST_SDK_PATH` でローカルSDK、`REPOSITORY_TEST_BUILD_DIR` でビルドキャッシュ先を
+指定できます。同一キャッシュ先での同時実行は避けてください。
+Xcodeでは既存RecordRepositoryTestsに追加した一覧テストも実行できます。
+
+### このブランチの検証結果
+
+- Swift 6.4.1 / Linux、Supabase SDK 2.55.4で通信モックテスト20件成功（既存保存15件＋一覧5件）。
+- PostgreSQL 17の一時DBで保存・一覧の所有者条件・並び順・RLSのSQLテスト成功。
+- 実Supabaseへの操作とiOSアプリ全体のビルドは未実行。
+
+### 統合時の確認
+
+最新mainと元のPR統合先 `feat/upload-shop-info` を取り込み、保存15件＋一覧5件のテストを保持しています。
+画像Repositoryの利用方法は [IMAGE_REPOSITORY.md](IMAGE_REPOSITORY.md) を参照してください。
+CLIの接続マネージャー差し替えは、mainで追加されたUserRepositoryからも参照できる構成にしています。
+
+統合後の通信モックテストは35件（保存15件・一覧5件・画像15件）すべて成功しました。
+一時PostgreSQLで保存・一覧・画像のSQL・RLS検証も成功しています。
+
+## マップ画面向けの店舗一覧（自分＋フレンド）
+
+```swift
+let visible = try await RecordRepository().fetchVisibleStores()
+// visible.currentUserID で自分の店舗とフレンドの店舗を出し分ける
+let mine = visible.stores.filter { $0.userID == visible.currentUserID }
+```
+
+自分とフレンド（自分がフォローしている相手）の店舗を`created_at`降順・同日時は`id`昇順で返します。
+フレンドの行は`store`のSELECT RLSポリシー（自分の行 or フォロー相手の行）で返るもので、
+クエリ側では`user_id`で絞り込みません。`fetchStores()`との違いはこの絞り込みの有無だけです。
+
+- 戻り値は`VisibleStores`（`currentUserID`と`[StoreRecord]`）です。認証の往復を増やさず
+  所有者を判別できるよう、取得に使ったセッションのユーザーIDを同梱します。
+- `fetchStores()`と同様に座標がNULLの行も返すため、ピン表示側で座標のある行を選びます。
+- ページ取得・並び順・上限1000件の前提は`fetchStores()`と同じです。
+- プロフィールは引き続き`fetchStores()`（自分の店舗のみ）を使用します。
+- マップ画面はこのメソッドを直接呼ばず、`RecordStore.loadVisible()` 経由で読みます。
+  登録画面での保存後に`RecordStore`のキャッシュが更新され、マップにもそのまま反映されます。
+
+### 選択中の店舗の写真
+
+```swift
+let images = try await ImageRepository().fetchImages(storeID: store.id)
+if let first = images.first {
+    let url = try await ImageRepository().signedURL(imageID: first.id)
+}
+```
+
+`created_at`昇順・同日時は`id`昇順で返すため、先頭が常に「最初の写真」になります。
+フレンドの店舗でも使うため所有者チェックは行わず、本人・フレンドの行だけが返ることは
+`image`のSELECT RLSポリシーが保証します。1店舗の画像は少数のためページ取得はしません
+（昇順のため、仮に返却上限に達しても先頭の行は欠けません）。0件は空配列を返します。
+
+## マップ手動確認用のシードデータ
+
+`store`が空だとマップに何も表示されないため、文京区・谷根千の徒歩圏に8件の店舗を
+登録するSQLを用意しています。手動確認専用で、自動テストではありません。
+
+SQL先頭の`REPLACE_WITH_OWNER_UUID`・`REPLACE_WITH_FRIEND_UUID`を実際のUUIDへ
+置き換えてから、RLSを通さない管理者（postgres / service_role）として実行します。
+確認用: `select id, email from public."user" order by created_at;`
+
+```sh
+# いずれでも実行できる（psqlのメタコマンドを使っていない）
+supabase db query --linked -f supabase/tests/seed_store.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/seed_store.sql
+# もしくはダッシュボード > SQL Editor に貼り付け
+```
+
+- `owner`が「自分の店舗」、`friend`が「フレンドの店舗」として表示されます。
+  両者には**双方向のフォロー関係**も張るため、どちらでログインしても
+  「自分／フレンド／両方」の絞り込みを確認できます。
+  1ユーザーだけで試す場合は両方に同じUUIDを入れてください（フォロー関係は作られません）。
+- `google_place_id = 'seed-shared-ramen'`の行をownerとfriendの両方に入れており、
+  「自分とフレンドの両方が登録した店舗」のピンバッジを確認できます。
+- 全ピンが1画面に収まるよう、徒歩圏（約1km四方）に配置しています。
+- `category`は`PlaceCategoryClassifier.categoryRules`の名称をそのまま使い、
+  和食／ラーメン・麺類／焼肉・肉料理／カフェ・喫茶／パン／スイーツ／居酒屋・バーの7分類を含みます。
+- `reputation`・`repeat_num`は値を散らし、`reputation`がNULLの行と`memo`がNULLの行を
+  1件ずつ含めて、任意項目の表示を確認できるようにしています。
+- 行はCOMMITして残します。片付けはSQL末尾のDELETE（`google_place_id`が`seed-%`）を
+  参照してください。本番DBでは実行しないでください。
+
+### このタスクの検証結果
+
+- ローカルの一時PostgreSQL 17に`migrations/20261024025750_initial_schema.sql`を適用し、
+  シードの登録・NULL項目・カテゴリ分類を確認しました。`authenticated`ロールでも参照でき、
+  ピンの最大距離は約900m以内でした。
+- 開発用Supabaseプロジェクトに対しても`supabase db query --linked`で実行し、
+  シード8件・フォロー2件が入ったことを確認しました（既存の実データ1件は変更していません）。
+- Swift側（`fetchVisibleStores()` / `fetchImages(storeID:)`）はマップ画面と合わせて
+  シミュレータ向けビルドが成功しています。

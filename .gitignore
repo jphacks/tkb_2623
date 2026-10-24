@@ -26,7 +26,7 @@ DerivedData/
 GourmetShareMap/Supabase/SupabaseConfig.swift
 
 # Google Maps API key
-GourmetShareMap/Services/Places/GoogleMapConfig.swift
+GourmetShareMap/Services/Places/GoogleMapsConfig.swift
 GourmetShareMap/Services/Gemini/GoogleGeminiConfig.swift
 
 

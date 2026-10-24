@@ -1,7 +1,7 @@
 import Foundation
 
 // アプリとCLIテストで共有する日本語カテゴリの判定。
-enum ShopCategory {
+enum PlaceCategoryClassifier {
     // 順序はtypesが複数カテゴリに一致した場合の優先順位。「その他」は最後。
     static let categoryRules: [(name: String, types: Set<String>)] = [
         ("和食", "japanese_restaurant sushi_restaurant tonkatsu_restaurant yakitori_restaurant seafood_restaurant hot_pot_restaurant"),
@@ -18,6 +18,9 @@ enum ShopCategory {
         ("居酒屋・バー", "japanese_izakaya_restaurant bar bar_and_grill pub irish_pub gastropub brewpub brewery beer_garden wine_bar winery cocktail_bar lounge_bar sports_bar hookah_bar"),
         ("その他", "restaurant fusion_restaurant fine_dining_restaurant vegan_restaurant vegetarian_restaurant halal_restaurant"),
     ].map { (name: $0.0, types: Set($0.1.split(separator: " ").map(String.init))) }
+
+    /// 13分類の名前を優先順位どおりに並べたもの。マップの絞り込みUIの選択肢として使う。
+    static let categoryNames: [String] = categoryRules.map(\.name)
 
     static func category(primaryType: String?, types: [String]) -> String {
         // 主カテゴリが具体的なら優先する。汎用のrestaurant等は詳細typesで補完する。
