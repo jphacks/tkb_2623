@@ -53,6 +53,32 @@ final class ImageRepository {
         return try await client.storage.from(bucket).createSignedURL(path: image.path, expiresIn: expiresIn)
     }
 
+    /// 店舗ごとに最初にアップロードされた写真（表紙）の署名付きURL。写真が無い店舗はキーに含まれない。
+    /// タイムライン・プロフィールの一覧で使うため、image行の取得と署名をまとめて1往復ずつで行う。
+    func coverImageURLs(storeIDs: [UUID], expiresIn: Int = 3600) async throws -> [UUID: URL] {
+        guard expiresIn > 0 else { throw ImageRepositoryError.invalidExpiration }
+        guard !storeIDs.isEmpty else { return [:] }
+        let images: [ImageRecord] = try await client.from("image")
+            .select()
+            .in("store_id", values: storeIDs.map(\.uuidString))
+            .order("created_at", ascending: true)
+            .order("id", ascending: true)
+            .execute().value
+
+        var coverPaths: [UUID: String] = [:]
+        for image in images where coverPaths[image.storeID] == nil {
+            coverPaths[image.storeID] = image.path
+        }
+        guard !coverPaths.isEmpty else { return [:] }
+
+        let results: [SignedURLResult] = try await client.storage.from(bucket)
+            .createSignedURLs(paths: Array(coverPaths.values), expiresIn: expiresIn)
+        let urlsByPath = results.reduce(into: [String: URL]()) { result, item in
+            if let url = item.signedURL { result[item.path] = url }
+        }
+        return coverPaths.compactMapValues { urlsByPath[$0] }
+    }
+
     /// Storageを先に削除する。DB削除失敗時は同じimageIDで再試行できる。
     func deleteImage(imageID: UUID) async throws {
         let userID = try await client.auth.session.user.id
