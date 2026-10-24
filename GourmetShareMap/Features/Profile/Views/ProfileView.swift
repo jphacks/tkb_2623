@@ -14,6 +14,21 @@ struct ProfileView: View {
     private let accentOrange = Color(red: 0.76, green: 0.35, blue: 0.22)
 
     var body: some View {
+        // フレンド一覧・フレンド追加へ push で遷移する。
+        NavigationStack {
+            content
+                // ルートは独自のヘッダーを持つため、ナビゲーションバーを出さない。
+                .toolbarVisibility(.hidden, for: .navigationBar)
+                .navigationDestination(for: FriendRoute.self) { route in
+                    switch route {
+                    case .list: FriendListView()
+                    case .add: FriendAddView()
+                    }
+                }
+        }
+    }
+
+    private var content: some View {
         ZStack {
             backgroundColor.ignoresSafeArea()
 
@@ -186,9 +201,7 @@ struct ProfileView: View {
     }
 
     private var friendListButton: some View {
-        Button {
-            // TODO: フレンド一覧画面ができたら遷移させる。
-        } label: {
+        NavigationLink(value: FriendRoute.list) {
             Text("フレンド一覧")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(accentOrange)
@@ -217,4 +230,5 @@ struct ProfileView: View {
 #Preview {
     ProfileView()
         .environmentObject(AuthViewModel())
+        .environment(FriendRequestStore())
 }

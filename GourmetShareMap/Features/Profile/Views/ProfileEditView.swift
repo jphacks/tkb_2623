@@ -43,6 +43,8 @@ struct ProfileEditView: View {
 
                         nameField
 
+                        userNameField
+
                         bioField
                     }
                     .padding(20)
@@ -115,6 +117,27 @@ struct ProfileEditView: View {
             TextField("表示名を入力", text: $viewModel.name)
                 .padding(12)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+
+    private var userNameField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ユーザー名")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.black.opacity(0.6))
+            HStack(spacing: 4) {
+                Text("@")
+                    .foregroundStyle(.black.opacity(0.4))
+                TextField("ユーザー名を入力", text: $viewModel.userName)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+            }
+            .padding(12)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Text("英小文字・数字・_ の3〜20文字。フレンドがあなたを検索するときに使います。")
+                .font(.system(size: 12))
+                .foregroundStyle(.black.opacity(0.5))
         }
     }
 
