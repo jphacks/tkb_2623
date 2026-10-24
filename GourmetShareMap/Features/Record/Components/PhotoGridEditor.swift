@@ -27,33 +27,37 @@ struct PhotoGridEditor: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    private let tileSize: CGFloat = 84
+    private let tileSize: CGFloat = 96
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 10) {
-                    ForEach(photos) { photo in
-                        photoTile(photo)
+            if photos.isEmpty && !isLoading {
+                emptyAddCard
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 10) {
+                        ForEach(photos) { photo in
+                            photoTile(photo)
+                        }
+                        if isLoading {
+                            ProgressView()
+                                .frame(width: tileSize, height: tileSize)
+                                .cardBackground(cornerRadius: 12)
+                        }
+                        if photos.count < maxCount {
+                            addTile
+                        }
                     }
-                    if isLoading {
-                        ProgressView()
-                            .frame(width: tileSize, height: tileSize)
-                            .cardBackground(cornerRadius: 12)
-                    }
-                    if photos.count < maxCount {
-                        addTile
-                    }
+                    // 削除ボタンがタイルの外にはみ出す分の余白
+                    .padding(.top, 6)
+                    .padding(.trailing, 6)
                 }
-                // 削除ボタンがタイルの外にはみ出す分の余白
-                .padding(.top, 6)
-                .padding(.trailing, 6)
-            }
-            .scrollIndicators(.hidden)
+                .scrollIndicators(.hidden)
 
-            Text(photos.count > 1 ? "タップで変更・長押しでドラッグして並べ替え" : "写真をタップして追加・変更")
-                .font(.caption)
-                .foregroundStyle(.appText.opacity(0.6))
+                Text(photos.count > 1 ? "タップで変更・長押しでドラッグして並べ替え" : "写真をタップして変更")
+                    .font(.caption)
+                    .foregroundStyle(.appText.opacity(0.6))
+            }
 
             if let errorMessage {
                 Text(errorMessage)
@@ -167,20 +171,58 @@ struct PhotoGridEditor: View {
             .accessibilityLabel(isCover ? "表紙の写真" : "写真")
     }
 
+    /// 写真が 0 枚のときに出す、画面幅いっぱいの追加ボタン。
+    private var emptyAddCard: some View {
+        PhotoSourceMenu(
+            onSelectCamera: { present(.camera, for: .add) },
+            onSelectLibrary: { present(.library, for: .add) }
+        ) {
+            VStack(spacing: 12) {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 64, height: 64)
+                    .background(.appPrimary, in: Circle())
+
+                VStack(spacing: 4) {
+                    Text("写真を追加")
+                        .font(.title3.bold())
+                        .foregroundStyle(.appPrimary)
+                    Text("お店で撮った写真から、お店の候補を探します")
+                        .font(.caption)
+                        .foregroundStyle(.appText.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 200)
+            .background(.appPrimary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(.appPrimary, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .accessibilityLabel("写真を追加")
+    }
+
     private var addTile: some View {
         PhotoSourceMenu(
             onSelectCamera: { present(.camera, for: .add) },
             onSelectLibrary: { present(.library, for: .add) }
         ) {
-            Image(systemName: "plus")
-                .font(.system(size: 26, weight: .light))
-                .foregroundStyle(.appText.opacity(0.6))
-                .frame(width: tileSize, height: tileSize)
-                .background(.appCard, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(.appBorder, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                }
+            VStack(spacing: 4) {
+                Image(systemName: "plus")
+                    .font(.system(size: 26, weight: .semibold))
+                Text("追加")
+                    .font(.caption.bold())
+            }
+            .foregroundStyle(.appPrimary)
+            .frame(width: tileSize, height: tileSize)
+            .background(.appPrimary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.appPrimary, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+            }
         }
         .accessibilityLabel("写真を追加")
     }
