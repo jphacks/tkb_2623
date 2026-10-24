@@ -29,9 +29,14 @@ extension NearbyShop: Identifiable {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
-    /// 候補リストで店舗アイコンとして使う画像（`PlaceCategoryClassifier` の分類名に対応。Assets.xcassets）。
+    /// 候補リストで店舗アイコンとして使う画像。
+    var iconImage: ImageResource { .categoryIcon(for: category) }
+}
+
+extension ImageResource {
+    /// 店舗カテゴリのアイコン（`PlaceCategoryClassifier` の分類名に対応。Assets.xcassets）。
     /// 専用アイコンのないカテゴリ（中華・アジア・エスニック・その他）は `others` を使う。
-    var iconImage: ImageResource {
+    static func categoryIcon(for category: String?) -> ImageResource {
         switch category {
         case "和食": .sushi
         case "ラーメン・麺類": .ramen

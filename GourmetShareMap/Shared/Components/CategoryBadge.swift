@@ -19,11 +19,12 @@ struct CategoryBadge: View {
 
     private var color: Color {
         switch category {
-        case "ラーメン": Color(red: 0.86, green: 0.42, blue: 0.24)
-        case "洋食": Color(red: 0.33, green: 0.52, blue: 0.80)
+        // 短い名前はモックデータ、「・」付きは `PlaceCategoryClassifier` の分類名。
+        case "ラーメン", "ラーメン・麺類": Color(red: 0.86, green: 0.42, blue: 0.24)
+        case "洋食", "洋食・西洋料理": Color(red: 0.33, green: 0.52, blue: 0.80)
         case "和食": Color(red: 0.45, green: 0.62, blue: 0.42)
         case "中華": Color(red: 0.80, green: 0.60, blue: 0.20)
-        case "カフェ": Color(red: 0.56, green: 0.43, blue: 0.31)
+        case "カフェ", "カフェ・喫茶": Color(red: 0.56, green: 0.43, blue: 0.31)
         default: Color.gray
         }
     }
