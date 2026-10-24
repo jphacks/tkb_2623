@@ -6,26 +6,31 @@
 import SwiftUI
 
 struct MainTabView: View {
+    enum TabItem: Hashable {
+        case map, record, profile
+    }
+
+    @State private var recordStore = RecordStore()
+    @State private var selectedTab: TabItem = .map
     private let accentOrange = Color(red: 0.76, green: 0.35, blue: 0.22)
 
     var body: some View {
-        TabView {
-            MapView()
-                .tabItem {
-                    Label("マップ", systemImage: "map")
-                }
+        TabView(selection: $selectedTab) {
+            Tab("マップ", systemImage: "map", value: .map) {
+                MapView()
+            }
 
-            RecordView()
-                .tabItem {
-                    Label("登録", systemImage: "plus")
-                }
+            Tab("登録", systemImage: "camera", value: .record) {
+                RecordCreateView(isActive: selectedTab == .record)
+            }
 
-            ProfileView()
-                .tabItem {
-                    Label("プロフィール", systemImage: "person")
-                }
+            Tab("プロフィール", systemImage: "person", value: .profile) {
+                ProfileView()
+            }
         }
         .tint(accentOrange)
+        .environment(recordStore)
+        .task { await recordStore.load() }
     }
 }
 
