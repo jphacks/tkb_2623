@@ -11,6 +11,8 @@ struct TimelinePostCard: View {
     let timeText: String
     /// アバター・名前タップ時の処理。プロフィール画面をシート表示する等、呼び出し側に委ねる。
     var onTapUser: () -> Void = {}
+    var onTapLike: () -> Void = {}
+    var onTapComments: () -> Void = {}
 
     private let cornerRadius: CGFloat = 18
 
@@ -29,9 +31,49 @@ struct TimelinePostCard: View {
             }
             .overlay(alignment: .topLeading) { header.padding(14) }
             .overlay(alignment: .bottomTrailing) { memoLabel }
+            .overlay(alignment: .bottomLeading) { actionRow.padding(12) }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             .accessibilityElement(children: .combine)
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 8) {
+            likeButton
+            commentButton
+        }
+    }
+
+    private var likeButton: some View {
+        Button(action: onTapLike) {
+            HStack(spacing: 4) {
+                Image(systemName: post.isLikedByMe ? "heart.fill" : "heart")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("\(post.likeCount)")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(post.isLikedByMe ? .pink : .white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.black.opacity(0.45), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var commentButton: some View {
+        Button(action: onTapComments) {
+            HStack(spacing: 4) {
+                Image(systemName: "bubble.right")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("\(post.commentCount)")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.black.opacity(0.45), in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private var header: some View {
@@ -182,14 +224,16 @@ struct UserInitialAvatar: View {
             post: TimelinePost(
                 id: UUID(), storeName: "カフェ つむぎ", category: "カフェ・喫茶",
                 memo: "ラテアートがかわいい。季節のタルトもおすすめ", userID: UUID(),
-                userName: "あおい", userAvatarURL: nil, isMine: false, createdAt: .now, coverImageURL: nil
+                userName: "あおい", userAvatarURL: nil, isMine: false, createdAt: .now, coverImageURL: nil,
+                commentCount: 3, likeCount: 5, isLikedByMe: true
             ),
             timeText: "2時間前"
         )
         TimelinePostCard(
             post: TimelinePost(
                 id: UUID(), storeName: "麺屋 はる", category: "ラーメン・麺類", memo: nil, userID: UUID(),
-                userName: "はる", userAvatarURL: nil, isMine: true, createdAt: .now, coverImageURL: nil
+                userName: "はる", userAvatarURL: nil, isMine: true, createdAt: .now, coverImageURL: nil,
+                commentCount: 0, likeCount: 0, isLikedByMe: false
             ),
             timeText: "5時間前"
         )

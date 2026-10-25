@@ -34,8 +34,12 @@ final class TimelineRepository {
         async let coverURLsTask = imageRepository.coverImageURLs(
             storeIDs: stores.map(\.id), expiresIn: signedURLExpiresIn
         )
+        async let commentCountsTask = fetchCommentCounts(storeIDs: stores.map(\.id))
+        async let likeStatesTask = fetchLikeStates(storeIDs: stores.map(\.id), currentUserID: userID)
         let users = try await usersTask
         let coverURLs = try await coverURLsTask
+        let commentCounts = try await commentCountsTask
+        let likeStates = try await likeStatesTask
         let avatarURLs = await fetchAvatarURLs(users)
 
         let posts = stores.map { store in
@@ -50,7 +54,10 @@ final class TimelineRepository {
                 userAvatarURL: avatarURLs[store.userID],
                 isMine: store.userID == userID,
                 createdAt: store.createdAt,
-                coverImageURL: coverURLs[store.id]
+                coverImageURL: coverURLs[store.id],
+                commentCount: commentCounts[store.id] ?? 0,
+                likeCount: likeStates[store.id]?.count ?? 0,
+                isLikedByMe: likeStates[store.id]?.isMine ?? false
             )
         }
         return TimelineFeed(posts: posts, friendCount: friendCount)
@@ -92,6 +99,42 @@ final class TimelineRepository {
             return [:]
         }
     }
+
+    /// 店舗ごとのコメント件数。本文は使わないので store_id だけ取得してクライアント側で数える。
+    private func fetchCommentCounts(storeIDs: [UUID]) async throws -> [UUID: Int] {
+        guard !storeIDs.isEmpty else { return [:] }
+        let rows: [CommentStoreID] = try await client.from("comment")
+            .select("store_id")
+            .in("store_id", values: storeIDs.map(\.uuidString))
+            .execute().value
+        return rows.reduce(into: [:]) { counts, row in
+            counts[row.storeID, default: 0] += 1
+        }
+    }
+
+    /// 店舗ごとのいいね件数と、自分がいいね済みかどうか。
+    private func fetchLikeStates(storeIDs: [UUID], currentUserID: UUID) async throws -> [UUID: LikeState] {
+        guard !storeIDs.isEmpty else { return [:] }
+        let rows: [StoreLikeRow] = try await client.from("store_like")
+            .select("store_id, user_id")
+            .in("store_id", values: storeIDs.map(\.uuidString))
+            .execute().value
+
+        var counts: [UUID: Int] = [:]
+        var likedByMe: Set<UUID> = []
+        for row in rows {
+            counts[row.storeID, default: 0] += 1
+            if row.userID == currentUserID { likedByMe.insert(row.storeID) }
+        }
+        return counts.reduce(into: [:]) { result, pair in
+            result[pair.key] = LikeState(count: pair.value, isMine: likedByMe.contains(pair.key))
+        }
+    }
+}
+
+private nonisolated struct LikeState {
+    let count: Int
+    let isMine: Bool
 }
 
 private nonisolated struct TimelineUser: Decodable {
@@ -102,5 +145,19 @@ private nonisolated struct TimelineUser: Decodable {
     enum CodingKeys: String, CodingKey {
         case id, name
         case profileImage = "profile_image"
+    }
+}
+
+private nonisolated struct CommentStoreID: Decodable {
+    let storeID: UUID
+    enum CodingKeys: String, CodingKey { case storeID = "store_id" }
+}
+
+private nonisolated struct StoreLikeRow: Decodable {
+    let storeID: UUID
+    let userID: UUID
+    enum CodingKeys: String, CodingKey {
+        case storeID = "store_id"
+        case userID = "user_id"
     }
 }
