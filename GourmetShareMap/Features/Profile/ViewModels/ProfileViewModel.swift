@@ -61,7 +61,11 @@ final class ProfileViewModel: ObservableObject {
     @Published private(set) var storeCount: Int = 0
     @Published private(set) var maxRepeatCount: Int = 0
     @Published private(set) var friendCount: Int = 0
-    @Published private(set) var recentRecords: [ProfileRecord] = []
+    /// 自分のプロフィールでは登録した全記録、フレンドのプロフィールでは先頭5件のみを保持する。
+    @Published private(set) var records: [ProfileRecord] = []
+    /// フレンドプロフィールの「最近の記録」表示用。自分のプロフィールでも呼べるが、
+    /// その場合は`records`（全件）の先頭5件を返すだけになる。
+    var recentRecords: [ProfileRecord] { Array(records.prefix(5)) }
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
     /// アバター表示用の署名付きURL。profile_image未設定、または取得に失敗した場合はnilのままで、
@@ -113,10 +117,12 @@ final class ProfileViewModel: ObservableObject {
             storeCount = fetchedStores.count
             maxRepeatCount = fetchedStores.map(\.repeatNum).max() ?? 0
             friendCount = await friends
+            // 自分のプロフィールは一覧グリッド表示のため全件、フレンドのプロフィールは
+            // 「最近の記録」表示用に先頭5件分だけ表紙写真を取得する。
             // fetchStores()はcreated_at降順で返るため、先頭5件がそのまま「最近の記録」になる。
-            let recentStores = Array(fetchedStores.prefix(5))
-            let coverURLs = await loadCoverImageURLs(storeIDs: recentStores.map(\.id))
-            recentRecords = recentStores.map { store in
+            let targetStores = isOwnProfile ? fetchedStores : Array(fetchedStores.prefix(5))
+            let coverURLs = await loadCoverImageURLs(storeIDs: targetStores.map(\.id))
+            records = targetStores.map { store in
                 ProfileRecord(
                     storeName: store.name,
                     category: store.category ?? "未分類",
