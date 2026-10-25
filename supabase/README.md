@@ -1,3 +1,24 @@
+# AIバックエンド連携 (ai-recommend Edge Function)
+
+`supabase/functions/ai-recommend/` は、iOSの「AIを育てる」タブからのレコメンド要求を
+Cloud Run上のAIバックエンド(`mogumap_clip_lgbm/`)へ中継するEdge Function。
+APIキーをアプリに埋め込まないため、iOSはCloud Runを直接呼ばずこのEdge Function経由で呼ぶ。
+詳細は [mogumap_clip_lgbm/REQUIREMENTS.md](../mogumap_clip_lgbm/REQUIREMENTS.md) を参照。
+
+デプロイと環境変数設定:
+
+```sh
+supabase functions deploy ai-recommend
+supabase secrets set AI_BACKEND_URL="https://<Cloud RunのURL>"
+supabase secrets set AI_BACKEND_API_KEY="<Cloud Run側のAI_BACKEND_API_KEYと同じ値>"
+```
+
+`AI_BACKEND_API_KEY`はGCP Secret Manager上の`ai-backend-api-key`と同じ値を使う。
+
+本マイグレーション(`20261024100000_ai_backend_schema.sql`)は`store`テーブルへの
+`google_rating`/`price_level`/`review_count`カラム追加と、`ai_model_status`テーブルの
+新規作成を行う。既存の保存機能(下記)への影響はない。
+
 # 店舗記録の保存
 
 `RecordRepository`は既存の **`public.store`（単数形）** に保存します。

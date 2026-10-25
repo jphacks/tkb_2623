@@ -13,6 +13,11 @@ nonisolated struct StoreRecord: Decodable, Equatable, Identifiable, Sendable {
     let latitude: Double?
     let longitude: Double?
     let createdAt: Date
+    /// Googleの公開平均★・価格帯(1〜4)・レビュー件数。登録時のスナップショットで、
+    /// AIバックエンドの学習特徴量に使う。古い記録や取得に失敗した記録はnil。
+    let googleRating: Double?
+    let priceLevel: Int?
+    let reviewCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, name, category, reputation, memo, latitude, longitude
@@ -20,6 +25,9 @@ nonisolated struct StoreRecord: Decodable, Equatable, Identifiable, Sendable {
         case googlePlaceID = "google_place_id"
         case repeatNum = "repeat_num"
         case createdAt = "created_at"
+        case googleRating = "google_rating"
+        case priceLevel = "price_level"
+        case reviewCount = "review_count"
     }
 }
 
@@ -36,4 +44,8 @@ struct StoreSaveInput: Sendable {
     var repeatNum: Int = 1
     var latitude: Double
     var longitude: Double
+    /// Google Places Detailsから取得した、AIバックエンド学習用のスナップショット。取得に失敗していればnil。
+    var googleRating: Double? = nil
+    var priceLevel: Int? = nil
+    var reviewCount: Int? = nil
 }
