@@ -28,7 +28,10 @@ struct MainTabView: View {
             }
 
             Tab("登録", systemImage: "camera", value: .record) {
-                RecordCreateView(isActive: selectedTab == .record)
+                RecordCreateView(
+                    isActive: selectedTab == .record,
+                    onShowMap: { selectedTab = .map }
+                )
             }
 
             Tab("タイムライン", systemImage: "clock", value: .timeline) {

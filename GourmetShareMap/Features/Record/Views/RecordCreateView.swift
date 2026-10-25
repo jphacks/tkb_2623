@@ -8,6 +8,8 @@ import SwiftUI
 struct RecordCreateView: View {
     /// 登録タブが選ばれているか。選ばれたときに写真がなければカメラを起動する。
     var isActive = true
+    /// 保存完了後に「マップに戻る」を押したとき。タブの選択は`MainTabView`に任せる。
+    var onShowMap: () -> Void = {}
 
     @Environment(RecordStore.self) private var recordStore
     @State private var viewModel = RecordCreateViewModel()
@@ -68,11 +70,18 @@ struct RecordCreateView: View {
         .background(.appBackground)
         .overlay {
             if let summary = viewModel.savedSummary {
-                RecordSavedView(summary: summary) {
-                    withAnimation(.snappy) { viewModel.savedSummary = nil }
-                    // 「続けて登録する」なので、そのまま次の撮影に進む。
-                    isCameraPresented = true
-                }
+                RecordSavedView(
+                    summary: summary,
+                    onContinue: {
+                        withAnimation(.snappy) { viewModel.savedSummary = nil }
+                        // 「続けて記録する」なので、そのまま次の撮影に進む。
+                        isCameraPresented = true
+                    },
+                    onShowMap: {
+                        viewModel.savedSummary = nil
+                        onShowMap()
+                    }
+                )
                 .transition(.opacity)
             }
         }
@@ -124,7 +133,9 @@ struct RecordCreateView: View {
 
                 fieldError(.category)
 
-                if let shop = viewModel.selectedCandidate,
+                // 保存処理中は保存した記録がストアに反映されて「記録済み」と判定されてしまうため、出さない。
+                if viewModel.canSave,
+                   let shop = viewModel.selectedCandidate,
                    let existing = recordStore.existingRecord(forPlaceID: shop.placeID) {
                     Label("記録済みのお店です。\(existing.repeatNum + 1)回目の訪問として記録を更新します", systemImage: "arrow.trianglehead.2.clockwise")
                         .font(.caption)
