@@ -13,7 +13,9 @@ struct ProfileViewModelTests {
         ]
         let viewModel = ProfileViewModel(
             profileDataSource: FakeProfileDataSource(.success(profile)),
-            storesDataSource: FakeStoresDataSource(.success(stores))
+            storesDataSource: FakeStoresDataSource(.success(stores)),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         await viewModel.load()
 
@@ -29,7 +31,9 @@ struct ProfileViewModelTests {
         let profile = UserProfile(id: UUID(), name: nil, bio: nil, profileImage: nil)
         let viewModel = ProfileViewModel(
             profileDataSource: FakeProfileDataSource(.success(profile)),
-            storesDataSource: FakeStoresDataSource(.success([]))
+            storesDataSource: FakeStoresDataSource(.success([])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         await viewModel.load()
 
@@ -39,14 +43,34 @@ struct ProfileViewModelTests {
         #expect(viewModel.maxRepeatCount == 0)
     }
 
-    @Test func loadFriendCountIsAlwaysZero() async throws {
+    @Test func loadSetsFriendCount() async throws {
+        let fakeFriends = FakeFriendsDataSource()
+        fakeFriends.result = .success(3)
         let viewModel = ProfileViewModel(
             profileDataSource: FakeProfileDataSource(.success(makeProfile())),
-            storesDataSource: FakeStoresDataSource(.success([makeStore(), makeStore()]))
+            storesDataSource: FakeStoresDataSource(.success([makeStore(), makeStore()])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: fakeFriends
         )
         #expect(viewModel.friendCount == 0)
         await viewModel.load()
+        #expect(viewModel.friendCount == 3)
+    }
+
+    @Test func loadFallsBackToZeroFriendCountWhenFetchFails() async throws {
+        let fakeFriends = FakeFriendsDataSource()
+        fakeFriends.result = .failure(FakeError(errorDescription: "フレンド数取得エラー"))
+        let viewModel = ProfileViewModel(
+            profileDataSource: FakeProfileDataSource(.success(makeProfile())),
+            storesDataSource: FakeStoresDataSource(.success([])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: fakeFriends
+        )
+        await viewModel.load()
+
+        // フレンド数の取得失敗は画面全体のエラーにはせず、0人として表示する。
         #expect(viewModel.friendCount == 0)
+        #expect(viewModel.errorMessage == nil)
     }
 
     @Test func loadLimitsRecentRecordsToFirstFiveInFetchedOrder() async throws {
@@ -54,7 +78,9 @@ struct ProfileViewModelTests {
         let stores = (1...7).map { makeStore(name: "店\($0)") }
         let viewModel = ProfileViewModel(
             profileDataSource: FakeProfileDataSource(.success(makeProfile())),
-            storesDataSource: FakeStoresDataSource(.success(stores))
+            storesDataSource: FakeStoresDataSource(.success(stores)),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         await viewModel.load()
 
@@ -67,7 +93,9 @@ struct ProfileViewModelTests {
         let stores = [makeStore(name: "謎の店", category: nil, reputation: nil, repeatNum: 3)]
         let viewModel = ProfileViewModel(
             profileDataSource: FakeProfileDataSource(.success(makeProfile())),
-            storesDataSource: FakeStoresDataSource(.success(stores))
+            storesDataSource: FakeStoresDataSource(.success(stores)),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         await viewModel.load()
 
@@ -81,7 +109,9 @@ struct ProfileViewModelTests {
     @Test func loadSetsErrorMessageWhenProfileFetchFails() async throws {
         let viewModel = ProfileViewModel(
             profileDataSource: FakeProfileDataSource(.failure(FakeError(errorDescription: "プロフィール取得エラー"))),
-            storesDataSource: FakeStoresDataSource(.success([]))
+            storesDataSource: FakeStoresDataSource(.success([])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         await viewModel.load()
 
@@ -92,7 +122,9 @@ struct ProfileViewModelTests {
     @Test func loadSetsErrorMessageWhenStoresFetchFails() async throws {
         let viewModel = ProfileViewModel(
             profileDataSource: FakeProfileDataSource(.success(makeProfile())),
-            storesDataSource: FakeStoresDataSource(.failure(FakeError(errorDescription: "店舗取得エラー")))
+            storesDataSource: FakeStoresDataSource(.failure(FakeError(errorDescription: "店舗取得エラー"))),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         await viewModel.load()
 
@@ -103,7 +135,10 @@ struct ProfileViewModelTests {
     @Test func loadClearsPreviousErrorMessageOnRetry() async throws {
         let fakeProfile = FakeProfileDataSource(.failure(FakeError(errorDescription: "一時的な失敗")))
         let fakeStores = FakeStoresDataSource(.success([]))
-        let viewModel = ProfileViewModel(profileDataSource: fakeProfile, storesDataSource: fakeStores)
+        let viewModel = ProfileViewModel(
+            profileDataSource: fakeProfile, storesDataSource: fakeStores,
+            coverImagesDataSource: FakeCoverImagesDataSource(), friendsDataSource: FakeFriendsDataSource()
+        )
         await viewModel.load()
         #expect(viewModel.errorMessage == "一時的な失敗")
 
@@ -120,7 +155,9 @@ struct ProfileViewModelTests {
         fakeProfile.signedURLResult = .success(signedURL)
         let viewModel = ProfileViewModel(
             profileDataSource: fakeProfile,
-            storesDataSource: FakeStoresDataSource(.success([]))
+            storesDataSource: FakeStoresDataSource(.success([])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         await viewModel.load()
 
@@ -131,7 +168,9 @@ struct ProfileViewModelTests {
     @Test func loadKeepsAvatarURLNilWhenProfileImageIsNil() async throws {
         let viewModel = ProfileViewModel(
             profileDataSource: FakeProfileDataSource(.success(makeProfile(profileImage: nil))),
-            storesDataSource: FakeStoresDataSource(.success([]))
+            storesDataSource: FakeStoresDataSource(.success([])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         await viewModel.load()
 
@@ -143,7 +182,9 @@ struct ProfileViewModelTests {
         fakeProfile.signedURLResult = .failure(FakeError(errorDescription: "署名URL取得エラー"))
         let viewModel = ProfileViewModel(
             profileDataSource: fakeProfile,
-            storesDataSource: FakeStoresDataSource(.success([]))
+            storesDataSource: FakeStoresDataSource(.success([])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         await viewModel.load()
 
@@ -155,7 +196,9 @@ struct ProfileViewModelTests {
     @Test func defaultTargetIsMeAndIsOwnProfileIsTrue() async throws {
         let viewModel = ProfileViewModel(
             profileDataSource: FakeProfileDataSource(.success(makeProfile())),
-            storesDataSource: FakeStoresDataSource(.success([]))
+            storesDataSource: FakeStoresDataSource(.success([])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         #expect(viewModel.isOwnProfile == true)
     }
@@ -168,7 +211,9 @@ struct ProfileViewModelTests {
         let viewModel = ProfileViewModel(
             target: .friend(userID: friendID),
             profileDataSource: fakeProfile,
-            storesDataSource: fakeStores
+            storesDataSource: fakeStores,
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
         )
         #expect(viewModel.isOwnProfile == false)
 
@@ -183,13 +228,68 @@ struct ProfileViewModelTests {
     }
 
     @Test func friendTargetFriendCountIsAlwaysZero() async throws {
+        // FriendRepository.fetchFriendCount()はログイン中ユーザー自身のフレンド数しか返せないため、
+        // .friendターゲットでは呼ばれず常に0のままになることを確認する。
+        let fakeFriends = FakeFriendsDataSource()
+        fakeFriends.result = .success(5)
         let viewModel = ProfileViewModel(
             target: .friend(userID: UUID()),
             profileDataSource: FakeProfileDataSource(.success(makeProfile())),
-            storesDataSource: FakeStoresDataSource(.success([]))
+            storesDataSource: FakeStoresDataSource(.success([])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: fakeFriends
         )
         await viewModel.load()
         #expect(viewModel.friendCount == 0)
+    }
+
+    @Test func loadSetsCoverImageURLsForRecentRecords() async throws {
+        let withPhoto = makeStore(name: "写真あり")
+        let withoutPhoto = makeStore(name: "写真なし")
+        let coverURL = URL(string: "https://example.com/signed/cover.jpg")!
+        let fakeCovers = FakeCoverImagesDataSource()
+        fakeCovers.result = .success([withPhoto.id: coverURL])
+        let viewModel = ProfileViewModel(
+            profileDataSource: FakeProfileDataSource(.success(makeProfile())),
+            storesDataSource: FakeStoresDataSource(.success([withPhoto, withoutPhoto])),
+            coverImagesDataSource: fakeCovers,
+            friendsDataSource: FakeFriendsDataSource()
+        )
+        await viewModel.load()
+
+        #expect(viewModel.recentRecords.map(\.coverImageURL) == [coverURL, nil])
+        #expect(fakeCovers.lastStoreIDs == [withPhoto.id, withoutPhoto.id])
+    }
+
+    @Test func loadRequestsCoverImagesOnlyForRecentRecords() async throws {
+        let stores = (1...7).map { makeStore(name: "店\($0)") }
+        let fakeCovers = FakeCoverImagesDataSource()
+        let viewModel = ProfileViewModel(
+            profileDataSource: FakeProfileDataSource(.success(makeProfile())),
+            storesDataSource: FakeStoresDataSource(.success(stores)),
+            coverImagesDataSource: fakeCovers,
+            friendsDataSource: FakeFriendsDataSource()
+        )
+        await viewModel.load()
+
+        #expect(fakeCovers.lastStoreIDs == stores.prefix(5).map(\.id))
+    }
+
+    @Test func loadFallsBackToNilCoverImageURLsWhenFetchFails() async throws {
+        let fakeCovers = FakeCoverImagesDataSource()
+        fakeCovers.result = .failure(FakeError(errorDescription: "表紙取得エラー"))
+        let viewModel = ProfileViewModel(
+            profileDataSource: FakeProfileDataSource(.success(makeProfile())),
+            storesDataSource: FakeStoresDataSource(.success([makeStore(name: "店A")])),
+            coverImagesDataSource: fakeCovers,
+            friendsDataSource: FakeFriendsDataSource()
+        )
+        await viewModel.load()
+
+        // 表紙の取得失敗は画面全体のエラーにはせず、各行を固定アイコンにフォールバックする。
+        #expect(viewModel.recentRecords.map(\.storeName) == ["店A"])
+        #expect(viewModel.recentRecords.first?.coverImageURL == nil)
+        #expect(viewModel.errorMessage == nil)
     }
 
     private func makeProfile(name: String? = "テスト太郎", bio: String? = nil, profileImage: String? = nil) -> UserProfile {
@@ -206,7 +306,8 @@ struct ProfileViewModelTests {
         StoreRecord(
             id: UUID(), name: name, category: category, reputation: reputation,
             userID: UUID(), googlePlaceID: nil, memo: nil, repeatNum: repeatNum,
-            latitude: nil, longitude: nil, createdAt: createdAt
+            latitude: nil, longitude: nil, createdAt: createdAt,
+            googleRating: nil, priceLevel: nil, reviewCount: nil
         )
     }
 }
@@ -274,5 +375,25 @@ private final class FakeStoresDataSource: ProfileStoresDataSource {
         case let .success(stores): return stores
         case let .failure(error): throw error
         }
+    }
+}
+
+@MainActor
+private final class FakeCoverImagesDataSource: ProfileCoverImagesDataSource {
+    var result: Result<[UUID: URL], any Error> = .success([:])
+    private(set) var lastStoreIDs: [UUID]?
+
+    func coverImageURLs(storeIDs: [UUID], expiresIn: Int) async throws -> [UUID: URL] {
+        lastStoreIDs = storeIDs
+        return try result.get()
+    }
+}
+
+@MainActor
+private final class FakeFriendsDataSource: ProfileFriendsDataSource {
+    var result: Result<Int, any Error> = .success(0)
+
+    func fetchFriendCount() async throws -> Int {
+        try result.get()
     }
 }

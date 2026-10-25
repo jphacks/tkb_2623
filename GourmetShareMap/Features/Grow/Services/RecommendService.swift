@@ -16,13 +16,26 @@ struct Recommendation: Identifiable, Equatable, Sendable {
     let reason: String
 
     var id: String { placeID }
+
+    /// Google Mapsでこの店を開くURL。`query_place_id`を指定しているので、
+    /// 同名の別店舗と混同されず常にこの店舗が開く。
+    /// https://developers.google.com/maps/documentation/urls/get-started
+    var mapsURL: URL? {
+        var components = URLComponents(string: "https://www.google.com/maps/search/")
+        components?.queryItems = [
+            URLQueryItem(name: "api", value: "1"),
+            URLQueryItem(name: "query", value: name),
+            URLQueryItem(name: "query_place_id", value: placeID),
+        ]
+        return components?.url
+    }
 }
 
 /// 学習済みモデルの状態。
 struct ModelStats: Equatable, Sendable {
     /// モデルの学習に使われた記録の件数。
     let trainedRecordCount: Int
-    /// 5-Fold交差検証のMAE（★いくつぶんズレるか）。APIがまだ返さないあいだは nil。
+    /// LOOCV（1件抜き交差検証）のMAE（★いくつぶんズレるか）。未学習・未取得のあいだは nil。
     let meanAbsoluteError: Double?
 
     /// MAEを「好みの読み当て率」(0〜100)に直した値。評価は1〜5の5段階＝最大4のズレなので、
@@ -34,13 +47,14 @@ struct ModelStats: Equatable, Sendable {
 }
 
 /// レコメンドとモデル情報の取得。
-/// 本番の実装は別リポジトリの推論API（`POST /predict`・`POST /train`）を叩く予定で、
-/// それが決まるまでは `MockRecommendService` を使う。
+/// 本番の実装(`LiveRecommendService`)はSupabaseの`ai-recommend` Edge Function経由で
+/// Cloud Run上のAIバックエンド（ユーザーごとのLightGBMモデル）を呼ぶ。
 protocol RecommendServing: Sendable {
-    /// 学習済みモデルの状態。`records` は、APIが無いあいだモックが件数から仮の精度を作るために渡している。
+    /// 学習済みモデルの状態。`records` は、APIの結果が無いあいだモックが件数から仮の精度を作るために渡している。
     func fetchModelStats(records: [StoreRecord]) async throws -> ModelStats
-    /// 自分の記録を履歴として渡し、おすすめ1件を受け取る。
-    func recommend(from records: [StoreRecord]) async throws -> Recommendation
+    /// フリーテキスト（「ラーメン食べたい」等）と現在地から、おすすめ上位3件を受け取る。
+    /// `records` は学習データ件数のチェック（未登録なら `notEnoughRecords`）に使う。
+    func recommend(freeText: String, latitude: Double, longitude: Double, records: [StoreRecord]) async throws -> [Recommendation]
 }
 
 enum RecommendError: LocalizedError, Equatable {
@@ -48,49 +62,49 @@ enum RecommendError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .notEnoughRecords: return "まずはお店を1件登録してください。"
+        case .notEnoughRecords: return "まずはお店を5件登録してください。"
         }
     }
 }
 
 /// APIが繋がるまでの仮実装。自分の記録の内容から、それらしいおすすめと精度を組み立てる。
-// TODO: 別リポジトリの推論APIが決まったら、URLSessionで叩く実装に差し替える。
-//       `GET /health`・`POST /predict` を想定していて、差し替えはこのファイルだけで済む。
 struct MockRecommendService: RecommendServing {
     /// APIの往復に見えるだけの待ち時間。
     var delay: Duration = .milliseconds(700)
 
     func fetchModelStats(records: [StoreRecord]) async throws -> ModelStats {
         try await Task.sleep(for: delay)
-        // 記録が増えるほどズレが小さくなる仮の値。実APIは5-Foldの評価値を返す想定。
+        // 記録が増えるほどズレが小さくなる仮の値。実APIはLOOCVの評価値を返す。
         let mae = max(0.35, 1.2 - Double(records.count) * 0.03)
         return ModelStats(trainedRecordCount: records.count, meanAbsoluteError: mae)
     }
 
-    func recommend(from records: [StoreRecord]) async throws -> Recommendation {
+    func recommend(freeText: String, latitude: Double, longitude: Double, records: [StoreRecord]) async throws -> [Recommendation] {
         guard !records.isEmpty else { throw RecommendError.notEnoughRecords }
         try await Task.sleep(for: delay)
 
-        let category = Self.favoriteCategory(in: records)
+        let categories = Self.topCategories(in: records, limit: 3)
         let rated = records.compactMap(\.reputation)
         let average = rated.isEmpty ? 3.5 : rated.reduce(0, +) / Double(rated.count)
-        let matching = records.filter { $0.category == category }.count
-        let predicted = min(5, max(1, average + 0.4))
 
-        return Recommendation(
-            placeID: "mock-place-\(category)",
-            name: Self.sampleName(for: category),
-            category: category,
-            predictedRating: (predicted * 10).rounded() / 10,
-            reason: "\(category)の記録が\(matching)件あって、平均★\(String(format: "%.1f", average))。似た雰囲気のお店です。"
-        )
+        return categories.enumerated().map { index, category in
+            let matching = records.filter { $0.category == category }.count
+            let predicted = min(5, max(1, average + 0.4 - Double(index) * 0.15))
+            return Recommendation(
+                placeID: "mock-place-\(category)",
+                name: Self.sampleName(for: category),
+                category: category,
+                predictedRating: (predicted * 10).rounded() / 10,
+                reason: "「\(freeText)」に近い、\(category)の記録が\(matching)件あって平均★\(String(format: "%.1f", average))。"
+            )
+        }
     }
 
-    /// 一番多く記録しているジャンル。記録が無ければ「ラーメン」。
-    private static func favoriteCategory(in records: [StoreRecord]) -> String {
+    /// 多く記録しているジャンルの上位（同数は名前順）。記録が無ければ「ラーメン・麺類」。
+    private static func topCategories(in records: [StoreRecord], limit: Int) -> [String] {
         let counts = Dictionary(grouping: records.compactMap(\.category), by: { $0 }).mapValues(\.count)
-        // 件数が同じときに表示が入れ替わらないよう、名前順で決める。
-        return counts.max { ($0.value, $1.key) < ($1.value, $0.key) }?.key ?? "ラーメン"
+        guard !counts.isEmpty else { return ["ラーメン・麺類"] }
+        return counts.sorted { ($0.value, $1.key) > ($1.value, $0.key) }.prefix(limit).map(\.key)
     }
 
     private static func sampleName(for category: String) -> String {
