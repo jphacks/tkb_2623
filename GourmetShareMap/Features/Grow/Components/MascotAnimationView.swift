@@ -6,10 +6,10 @@
 import SwiftUI
 import UIKit
 
-/// まんぷく先生の表示。レベルごとの画像をコマ送りでループする。
-/// Assetに画像が入っていない段階では仮描き（`MascotPlaceholderView`）を出すので、
-/// 画像が届いたら Asset に `mascot_lv2_01` などの名前で入れるだけで切り替わる。
+/// キャラクターの表示。8枚のコマ画像をループさせる。
+/// Assetに該当キャラの画像が入っていない場合は仮描き（`MascotPlaceholderView`）にフォールバックする。
 struct MascotAnimationView: View {
+    let character: MascotCharacter
     let level: MascotLevel
     /// 1秒あたりのコマ数。実機を見ながら調整する想定。
     var framesPerSecond: Double = 8
@@ -19,10 +19,11 @@ struct MascotAnimationView: View {
     /// Assetに実際に入っているコマだけを読み込む。枚数は決め打ちしない。
     private let frames: [UIImage]
 
-    init(level: MascotLevel, framesPerSecond: Double = 8) {
+    init(character: MascotCharacter, level: MascotLevel, framesPerSecond: Double = 8) {
+        self.character = character
         self.level = level
         self.framesPerSecond = framesPerSecond
-        self.frames = level.frameImageNames.compactMap { UIImage(named: $0) }
+        self.frames = character.frameImageNames.compactMap { UIImage(named: $0) }
     }
 
     var body: some View {
@@ -42,7 +43,7 @@ struct MascotAnimationView: View {
         Image(uiImage: uiImage)
             .resizable()
             .scaledToFit()
-            .accessibilityLabel("\(level.title)のイラスト")
+            .accessibilityLabel("\(character.displayName)（\(level.title)）のイラスト")
     }
 
     private func frameIndex(at date: Date) -> Int {
@@ -53,7 +54,7 @@ struct MascotAnimationView: View {
 }
 
 #Preview {
-    MascotAnimationView(level: .lv2)
+    MascotAnimationView(character: .kometaro, level: .lv2)
         .frame(height: 200)
         .padding()
         .background(.appBackground)

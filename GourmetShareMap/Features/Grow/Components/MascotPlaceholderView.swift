@@ -5,9 +5,9 @@
 
 import SwiftUI
 
-/// キャラクター画像が届くまでの仮描き。レベルごとに装備と動きが変わる。
+/// キャラクター画像がAssetに見つからないときの仮描き。レベルごとに装備と動きが変わる。
 /// Lv.1 装備なし・少し小さい / Lv.2 手ぬぐい＋湯気 / Lv.3 コック帽＋きらめき。
-// TODO: `mascot_lv1_01` などの画像がAssetに入ったら、このViewは使われなくなる（削除してよい）。
+// NOTE: 各キャラの `{character}_01`〜`08` がAssetに入っていれば通常はこのViewは使われない（画像読み込み失敗時の保険）。
 struct MascotPlaceholderView: View {
     let level: MascotLevel
 

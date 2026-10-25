@@ -5,14 +5,19 @@
 
 import SwiftUI
 
-/// レコメンド結果。まんぷく先生が薦めた上位3件を、予測評価と理由つきで出す。
+/// レコメンド結果。相棒が薦めた上位3件を、予測評価と理由つきで出す。
 /// 下にスワイプすれば閉じられる標準のシート動作に任せるため、専用の閉じるボタンは置かない。
 struct RecommendationSheet: View {
     let recommendations: [Recommendation]
 
+    /// 一番のおすすめ（先頭の1件）のカテゴリで、一番育ったキャラ（Lv.3）を出す。
+    private var character: MascotCharacter {
+        MascotCharacterMapping.character(for: recommendations.first?.category ?? "その他", level: .lv3)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            MascotAnimationView(level: .lv3, framesPerSecond: 6)
+            MascotAnimationView(character: character, level: .lv3, framesPerSecond: 6)
                 .frame(height: 100)
                 .padding(.top, 20)
 
