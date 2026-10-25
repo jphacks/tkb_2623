@@ -77,7 +77,7 @@ struct TimelinePostCard: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                UserInitialAvatar(userID: post.userID, name: post.userName)
+                UserInitialAvatar(userID: post.userID, name: post.userName, imageURL: post.userAvatarURL)
 
                 Text(post.userName ?? "名前未設定")
                     .font(.system(size: 14, weight: .bold))
@@ -164,11 +164,14 @@ struct TimelinePostCard: View {
     }
 }
 
-/// プロフィール画像があればそれを、無ければ名前の頭文字を丸で囲んで表示する。背景色はユーザーごとに固定。
+/// ユーザーのアイコン。画像があればそれを、無い・読み込み中・失敗時は名前の頭文字を丸で囲んで表示する。
+/// 頭文字の背景色はユーザーごとに固定。
 struct UserInitialAvatar: View {
     let userID: UUID
     let name: String?
-    var avatarURL: URL? = nil
+    var imageURL: URL?
+
+    private let size: CGFloat = 30
 
     private static let palette: [Color] = [
         Color(hex: 0xF6C9B4), Color(hex: 0xF7DFA8), Color(hex: 0xC8DDF2),
@@ -176,30 +179,29 @@ struct UserInitialAvatar: View {
     ]
 
     var body: some View {
-        Group {
-            if let avatarURL {
-                AsyncImage(url: avatarURL) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        initialLabel
+        initial
+            .overlay {
+                if let imageURL {
+                    AsyncImage(url: imageURL) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            Color.clear
+                        }
                     }
                 }
-            } else {
-                initialLabel
             }
-        }
-        .frame(width: 30, height: 30)
-        .background(backgroundColor, in: Circle())
-        .clipShape(Circle())
-        .overlay(Circle().strokeBorder(.white, lineWidth: 2))
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .overlay(Circle().strokeBorder(.white, lineWidth: 2))
     }
 
-    private var initialLabel: some View {
+    private var initial: some View {
         Text(name?.first.map(String.init) ?? "?")
             .font(.system(size: 13, weight: .bold))
             .foregroundStyle(.appText)
-            .frame(width: 30, height: 30)
+            .frame(width: size, height: size)
+            .background(backgroundColor, in: Circle())
     }
 
     private var backgroundColor: Color {
@@ -215,16 +217,16 @@ struct UserInitialAvatar: View {
             post: TimelinePost(
                 id: UUID(), storeName: "カフェ つむぎ", category: "カフェ・喫茶",
                 memo: "ラテアートがかわいい。季節のタルトもおすすめ", userID: UUID(),
-                userName: "あおい", isMine: false, createdAt: .now, coverImageURL: nil, commentCount: 3,
-                likeCount: 5, isLikedByMe: true
+                userName: "あおい", userAvatarURL: nil, isMine: false, createdAt: .now, coverImageURL: nil,
+                commentCount: 3, likeCount: 5, isLikedByMe: true
             ),
             timeText: "2時間前"
         )
         TimelinePostCard(
             post: TimelinePost(
                 id: UUID(), storeName: "麺屋 はる", category: "ラーメン・麺類", memo: nil, userID: UUID(),
-                userName: "はる", isMine: true, createdAt: .now, coverImageURL: nil, commentCount: 0,
-                likeCount: 0, isLikedByMe: false
+                userName: "はる", userAvatarURL: nil, isMine: true, createdAt: .now, coverImageURL: nil,
+                commentCount: 0, likeCount: 0, isLikedByMe: false
             ),
             timeText: "5時間前"
         )

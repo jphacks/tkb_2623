@@ -118,7 +118,7 @@ private struct CommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            UserInitialAvatar(userID: comment.userID, name: comment.userName, avatarURL: comment.avatarURL)
+            UserInitialAvatar(userID: comment.userID, name: comment.userName, imageURL: comment.avatarURL)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {

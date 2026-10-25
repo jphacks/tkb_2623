@@ -60,7 +60,7 @@ struct TimelineViewModelTests {
     ) -> TimelinePost {
         TimelinePost(
             id: UUID(), storeName: name, category: "カフェ・喫茶", memo: nil, userID: UUID(),
-            userName: "あおい", isMine: isMine, createdAt: createdAt, coverImageURL: nil,
+            userName: "あおい", userAvatarURL: nil, isMine: isMine, createdAt: createdAt, coverImageURL: nil,
             commentCount: commentCount, likeCount: likeCount, isLikedByMe: isLikedByMe
         )
     }

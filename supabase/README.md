@@ -1,3 +1,24 @@
+# AIバックエンド連携 (ai-recommend Edge Function)
+
+`supabase/functions/ai-recommend/` は、iOSの「AIを育てる」タブからのレコメンド要求を
+Cloud Run上のAIバックエンド(`mogumap_clip_lgbm/`)へ中継するEdge Function。
+APIキーをアプリに埋め込まないため、iOSはCloud Runを直接呼ばずこのEdge Function経由で呼ぶ。
+詳細は [mogumap_clip_lgbm/REQUIREMENTS.md](../mogumap_clip_lgbm/REQUIREMENTS.md) を参照。
+
+デプロイと環境変数設定:
+
+```sh
+supabase functions deploy ai-recommend
+supabase secrets set AI_BACKEND_URL="https://<Cloud RunのURL>"
+supabase secrets set AI_BACKEND_API_KEY="<Cloud Run側のAI_BACKEND_API_KEYと同じ値>"
+```
+
+`AI_BACKEND_API_KEY`はGCP Secret Manager上の`ai-backend-api-key`と同じ値を使う。
+
+本マイグレーション(`20261024100000_ai_backend_schema.sql`)は`store`テーブルへの
+`google_rating`/`price_level`/`review_count`カラム追加と、`ai_model_status`テーブルの
+新規作成を行う。既存の保存機能(下記)への影響はない。
+
 # 店舗記録の保存
 
 `RecordRepository`は既存の **`public.store`（単数形）** に保存します。
@@ -269,3 +290,25 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/seed_store.sql
   シード8件・フォロー2件が入ったことを確認しました（既存の実データ1件は変更していません）。
 - Swift側（`fetchVisibleStores()` / `fetchImages(storeID:)`）はマップ画面と合わせて
   シミュレータ向けビルドが成功しています。
+
+## フレンド申請・承認（user_name 検索）
+
+### 手動で適用する migration
+
+Supabaseダッシュボード > SQL Editor で、次の順に実行してください。
+
+1. `migrations/20261024150000_user_name_default.sql` — user_name の自動採番・既存行の補完・NOT NULL / 形式チェック
+2. `migrations/20261024150100_friend_request.sql` — friend_request テーブル・申請/承認関数・friend の直接 insert ポリシー削除
+3. `migrations/20261024150200_friend_search.sql` — user_name 完全一致検索・申請者の参照権限・profile-images の参照ポリシー
+
+### ローカルでの確認
+
+Dockerを起動し、リポジトリのルートから実行します。
+
+```sh
+bash supabase/tests/check_friend_db.sh
+```
+
+一時PostgreSQL 17に `migrations/` を順に適用し（Auth・Storageは最小構成のスタブ）、
+`tests/friend_user_name.sql`・`tests/friend_request.sql`・`tests/friend_search.sql` を実行します。
+既存データの補完は、user_name 必須化の前に `tests/friend_legacy_seed.sql` を投入して確認します。

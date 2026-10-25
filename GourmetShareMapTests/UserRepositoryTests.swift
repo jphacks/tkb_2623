@@ -19,6 +19,7 @@ struct UserRepositoryTests {
         defer { session.invalidateAndCancel() }
         let profile = try await repository.fetchMyProfile()
         #expect(profile.id == userID)
+        #expect(profile.userName == "test_taro")
         #expect(profile.name == "テスト太郎")
         #expect(profile.bio == "よろしくお願いします")
         #expect(profile.profileImage == oldPath)
@@ -27,18 +28,19 @@ struct UserRepositoryTests {
         #expect(request.httpMethod == "GET")
         #expect(request.url?.path == "/rest/v1/user")
         #expect(query(request, "id")?.lowercased() == "eq.\(userID.uuidString.lowercased())")
-        #expect(query(request, "select") == "id,name,bio,profile_image")
+        #expect(query(request, "select") == "id,user_name,name,bio,profile_image")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-access-token")
     }
 
     @Test func fetchMyProfileDecodesNullableFields() async throws {
         let json = """
-        {"id":"\(userID)","name":null,"bio":null,"profile_image":null}
+        {"id":"\(userID)","user_name":null,"name":null,"bio":null,"profile_image":null}
         """
         let (repository, session) = try await makeRepository(fetchResponse: Data(json.utf8))
         defer { session.invalidateAndCancel() }
         let profile = try await repository.fetchMyProfile()
         #expect(profile.id == userID)
+        #expect(profile.userName == nil)
         #expect(profile.name == nil)
         #expect(profile.bio == nil)
         #expect(profile.profileImage == nil)
@@ -81,6 +83,60 @@ struct UserRepositoryTests {
         let (repository, session) = try await makeRepository(fault: .network)
         defer { session.invalidateAndCancel() }
         await #expect(throws: URLError.self) { try await repository.fetchMyProfile() }
+    }
+
+    // MARK: - updateMyProfile
+
+    @Test func updateMyProfileSendsNameBioAndUserName() async throws {
+        let (repository, session) = try await makeRepository()
+        defer { session.invalidateAndCancel() }
+        try await repository.updateMyProfile(name: "新しい名前", bio: "自己紹介", userName: "new_name")
+
+        let request = try #require(UserMockURLProtocol.requests.last)
+        #expect(request.httpMethod == "PATCH")
+        #expect(query(request, "id")?.lowercased() == "eq.\(userID.uuidString.lowercased())")
+        let sent = try body(request)
+        #expect(sent["name"] as? String == "新しい名前")
+        #expect(sent["bio"] as? String == "自己紹介")
+        #expect(sent["user_name"] as? String == "new_name")
+    }
+
+    @Test func updateMyProfileOmitsNilFields() async throws {
+        let (repository, session) = try await makeRepository()
+        defer { session.invalidateAndCancel() }
+        try await repository.updateMyProfile(name: "名前だけ", bio: nil, userName: nil)
+
+        let sent = try body(try #require(UserMockURLProtocol.requests.last))
+        #expect(sent["name"] as? String == "名前だけ")
+        #expect(sent["bio"] == nil)
+        #expect(sent["user_name"] == nil)
+    }
+
+    @Test func updateMyProfileMapsDuplicateUserNameError() async throws {
+        let (repository, session) = try await makeRepository(fault: .userNameTaken)
+        defer { session.invalidateAndCancel() }
+        do {
+            try await repository.updateMyProfile(name: nil, bio: nil, userName: "taken_name")
+            Issue.record("重複エラーがthrowされませんでした")
+        } catch UserRepositoryError.userNameTaken {
+            #expect(UserRepositoryError.userNameTaken.errorDescription == "このユーザー名は既に使われています。")
+        }
+    }
+
+    @Test func updateMyProfileMapsUserNameFormatError() async throws {
+        let (repository, session) = try await makeRepository(fault: .userNameInvalid)
+        defer { session.invalidateAndCancel() }
+        await #expect(throws: UserRepositoryError.self) {
+            try await repository.updateMyProfile(name: nil, bio: nil, userName: "x")
+        }
+    }
+
+    @Test func updateMyProfilePropagatesOtherDatabaseErrors() async throws {
+        let (repository, session) = try await makeRepository(fault: .updateDenied)
+        defer { session.invalidateAndCancel() }
+        await #expect(throws: PostgrestError.self) {
+            try await repository.updateMyProfile(name: "名前", bio: nil, userName: nil)
+        }
     }
 
     // MARK: - uploadProfileImage
@@ -195,12 +251,15 @@ struct UserRepositoryTests {
 
     // MARK: - helpers
 
-    enum Fault: Sendable { case none, network, uploadDenied, updateDenied, cleanupDenied, oldDeleteMissing, signDenied }
+    enum Fault: Sendable {
+        case none, network, uploadDenied, updateDenied, cleanupDenied, oldDeleteMissing, signDenied
+        case userNameTaken, userNameInvalid
+    }
 
     private func profileJSON(path: String?) -> String {
         let imageValue = path.map { "\"\($0)\"" } ?? "null"
         return """
-        {"id":"\(userID)","name":"テスト太郎","bio":"よろしくお願いします","profile_image":\(imageValue)}
+        {"id":"\(userID)","user_name":"test_taro","name":"テスト太郎","bio":"よろしくお願いします","profile_image":\(imageValue)}
         """
     }
 
@@ -232,8 +291,14 @@ struct UserRepositoryTests {
                     if let fetchResponse { return (fetchStatus, fetchResponse) }
                     return (fetchStatus, Data(profileJSON(path: existingImagePath).utf8))
                 }
-                // PATCH（updateMyProfileImage）
+                // PATCH（updateMyProfile / updateMyProfileImage）
                 if fault == .updateDenied || fault == .cleanupDenied { return (403, dbError) }
+                if fault == .userNameTaken {
+                    return (409, Data(#"{"code":"23505","message":"duplicate key value violates unique constraint \"user_user_name_key\""}"#.utf8))
+                }
+                if fault == .userNameInvalid {
+                    return (400, Data(#"{"code":"23514","message":"new row for relation \"user\" violates check constraint \"user_user_name_format\""}"#.utf8))
+                }
                 return (200, Data("[]".utf8))
             }
             if route.hasPrefix("/storage/v1/object/sign/profile-images/") {

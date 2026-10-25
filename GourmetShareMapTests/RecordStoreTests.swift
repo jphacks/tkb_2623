@@ -54,7 +54,8 @@ extension StoreRecord {
         StoreRecord(
             id: id, name: name, category: "ラーメン・麺類", reputation: 4, userID: UUID(),
             googlePlaceID: placeID, memo: nil, repeatNum: repeatNum,
-            latitude: 35.7, longitude: 139.7, createdAt: .now
+            latitude: 35.7, longitude: 139.7, createdAt: .now,
+            googleRating: nil, priceLevel: nil, reviewCount: nil
         )
     }
 }

@@ -10,6 +10,8 @@ nonisolated struct TimelinePost: Equatable, Identifiable, Sendable {
     let userID: UUID
     /// user.name。取得できなかったときは nil。
     let userName: String?
+    /// user.profile_image の署名付きURL。アイコン未設定・取得失敗時は nil。
+    let userAvatarURL: URL?
     let isMine: Bool
     let createdAt: Date
     /// 表紙（最初にアップロードした写真）の署名付きURL。写真がなければ nil。
@@ -25,8 +27,8 @@ nonisolated struct TimelinePost: Equatable, Identifiable, Sendable {
     func togglingLike() -> TimelinePost {
         TimelinePost(
             id: id, storeName: storeName, category: category, memo: memo, userID: userID,
-            userName: userName, isMine: isMine, createdAt: createdAt, coverImageURL: coverImageURL,
-            commentCount: commentCount,
+            userName: userName, userAvatarURL: userAvatarURL, isMine: isMine, createdAt: createdAt,
+            coverImageURL: coverImageURL, commentCount: commentCount,
             likeCount: isLikedByMe ? max(0, likeCount - 1) : likeCount + 1,
             isLikedByMe: !isLikedByMe
         )

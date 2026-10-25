@@ -20,6 +20,17 @@ protocol RecordImageUploading {
     func uploadImage(data: Data, storeID: UUID, format: RecordImageFormat) async throws -> ImageRecord
 }
 
+/// Google Places Detailsからの評価・価格帯・レビュー件数の取得。AIバックエンドの学習用スナップショット。
+protocol PlaceDetailsFetching: Sendable {
+    func fetchDetails(placeID: String) async throws -> PlaceDetails
+}
+
+struct PlacesPlaceDetailsFetcher: PlaceDetailsFetching {
+    func fetchDetails(placeID: String) async throws -> PlaceDetails {
+        try await findPlaceDetails(placeID: placeID)
+    }
+}
+
 extension RecordRepository: StoreRecordRepository {}
 extension ImageRepository: RecordImageUploading {}
 
@@ -62,14 +73,17 @@ final class RecordStore {
 
     private let recordRepository: any StoreRecordRepository
     private let imageUploader: any RecordImageUploading
+    private let placeDetailsFetcher: any PlaceDetailsFetching
 
     /// 引数を省略すると Supabase に接続する本番の Repository を使う。
     init(
         recordRepository: (any StoreRecordRepository)? = nil,
-        imageUploader: (any RecordImageUploading)? = nil
+        imageUploader: (any RecordImageUploading)? = nil,
+        placeDetailsFetcher: (any PlaceDetailsFetching)? = nil
     ) {
         self.recordRepository = recordRepository ?? RecordRepository()
         self.imageUploader = imageUploader ?? ImageRepository()
+        self.placeDetailsFetcher = placeDetailsFetcher ?? PlacesPlaceDetailsFetcher()
     }
 
     func load() async {
@@ -109,6 +123,14 @@ final class RecordStore {
         }
 
         let existing = existingRecord(forPlaceID: draft.shop.placeID)
+        // ベストエフォート: 取得できなくても記録の保存自体は妨げない。
+        // 既存記録の再訪問時は前回値を保持し、無駄な再取得をしない。
+        let details: PlaceDetails?
+        if let existing {
+            details = PlaceDetails(rating: existing.googleRating, priceLevel: existing.priceLevel, userRatingCount: existing.reviewCount)
+        } else {
+            details = try? await placeDetailsFetcher.fetchDetails(placeID: draft.shop.placeID)
+        }
         let input = StoreSaveInput(
             id: existing?.id,
             name: draft.shop.name,
@@ -118,7 +140,10 @@ final class RecordStore {
             memo: draft.memo,
             repeatNum: (existing?.repeatNum ?? 0) + 1,
             latitude: draft.shop.latitude,
-            longitude: draft.shop.longitude
+            longitude: draft.shop.longitude,
+            googleRating: details?.rating,
+            priceLevel: details?.priceLevel,
+            reviewCount: details?.userRatingCount
         )
         let store = try await recordRepository.saveStore(input)
         upsertCache(store)
