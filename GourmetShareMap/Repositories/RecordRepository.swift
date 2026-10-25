@@ -46,6 +46,14 @@ final class RecordRepository {
     /// created_at降順・id昇順。Supabase標準の最大返却件数に合わせてページ取得する。
     func fetchStores() async throws -> [StoreRecord] {
         let userID = try await client.auth.session.user.id
+        return try await fetchStores(userID: userID)
+    }
+
+    /// 指定した`userID`の店舗記録一覧。座標がNULLの行も返す。
+    /// 友達のプロフィール表示用。storeのRLS（自分の行 or フォロー中ユーザーの行）の範囲でのみ取得できる。
+    /// フォロー関係のない相手を指定した場合は0件が返る（エラーにはならない）。
+    /// created_at降順・id昇順。Supabase標準の最大返却件数に合わせてページ取得する。
+    func fetchStores(userID: UUID) async throws -> [StoreRecord] {
         let pageSize = 1000
         var records: [StoreRecord] = []
         while true {
