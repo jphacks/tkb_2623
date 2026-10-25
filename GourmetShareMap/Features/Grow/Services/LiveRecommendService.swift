@@ -46,8 +46,6 @@ struct LiveRecommendService: RecommendServing {
     }
 
     func recommend(freeText: String, latitude: Double, longitude: Double, records: [StoreRecord]) async throws -> [Recommendation] {
-        guard !records.isEmpty else { throw RecommendError.notEnoughRecords }
-
         let session = try await client.auth.session
         var request = URLRequest(url: SupabaseConfig.url.appendingPathComponent("functions/v1/ai-recommend"))
         request.httpMethod = "POST"

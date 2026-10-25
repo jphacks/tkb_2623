@@ -59,7 +59,7 @@ Deno.serve(async (req: Request) => {
   const stores: StoreRow[] = [];
   for (let offset = 0; offset <= 2000; offset += 500) {
     const { data, error } = await supabase.from("store")
-      .select("id, category, reputation, price_level, google_rating, review_count, created_at, image(id, image, created_at)")
+      .select("id, category, reputation, price_level, google_rating, review_count, created_at, image(id, image, created_at, dish_features, dish_features_status)")
       .eq("user_id", userId).not("reputation", "is", null)
       .order("id").range(offset, offset + 499);
     if (error) return jsonError("店舗履歴を取得できませんでした", 502);
@@ -76,7 +76,13 @@ Deno.serve(async (req: Request) => {
     google_rating: number | null;
     review_count: number | null;
     created_at: string;
-    image: { id: string; image: string; created_at: string }[] | null;
+    image: {
+      id: string;
+      image: string;
+      created_at: string;
+      dish_features: { features?: Record<string, unknown> } | null;
+      dish_features_status: string | null;
+    }[] | null;
   };
 
   // Representative photo order matches repository.py. Bound download concurrency.
@@ -84,8 +90,9 @@ Deno.serve(async (req: Request) => {
   const historyResults: (Record<string, unknown> | null)[] = [];
   for (let start = 0; start < storesWithPhotos.length; start += 8) {
     const batch = await Promise.all(storesWithPhotos.slice(start, start + 8).map(async (store) => {
-      const firstImage = [...store.image!].sort((a, b) =>
-        a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))[0];
+      const photos = [...store.image!].sort((a, b) =>
+        a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+      const firstImage = photos[0];
       const { data: fileData, error: downloadError } = await supabase.storage
         .from(RECORD_IMAGES_BUCKET).download(firstImage.image);
       // A temporary Storage failure must not lower the apparent store count.
@@ -98,6 +105,10 @@ Deno.serve(async (req: Request) => {
         google_rating: store.google_rating ?? DEFAULTS.google_rating,
         review_count: store.review_count ?? DEFAULTS.review_count,
         user_id: userId, rating: store.reputation, rated_at: store.created_at,
+        // Geminiモードの好みの手がかり。解析済み(analyze-dish)の全写真の料理の特徴を登録順で渡す。
+        dish_features: photos
+          .filter((photo) => photo.dish_features_status === "done" && photo.dish_features?.features)
+          .map((photo) => photo.dish_features!.features),
       };
     })).catch(() => null);
     if (!batch) return jsonError("写真を取得できませんでした。しばらくしてから再度お試しください", 503);

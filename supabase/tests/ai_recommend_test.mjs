@@ -56,11 +56,16 @@ assert.equal((await handler(request(wish))).status, 200);
 assert.equal(forwarded.history.length, 0);
 assert.equal(forwarded.user_id, 'user-1');
 stores = [{ id: 'p0', category: null, reputation: 4, created_at: '2026-01-01', image: [
-  { id: 'late', image: 'late.png', created_at: '2026-02-01' },
-  { id: 'first', image: 'first.png', created_at: '2026-01-01' },
+  { id: 'late', image: 'late.png', created_at: '2026-02-01',
+    dish_features: { schema_version: 'v1', features: { caption: 'late-dish' } }, dish_features_status: 'done' },
+  { id: 'pending', image: 'pending.png', created_at: '2026-01-15', dish_features: null, dish_features_status: 'pending' },
+  { id: 'first', image: 'first.png', created_at: '2026-01-01',
+    dish_features: { schema_version: 'v1', features: { caption: 'first-dish' } }, dish_features_status: 'done' },
 ] }];
 assert.equal((await handler(request(wish))).status, 200);
 assert.equal(downloaded.at(-1), 'first.png');
+// Every analyzed photo's features in registration order, not only the representative photo.
+assert.deepEqual(forwarded.history[0].dish_features, [{ caption: 'first-dish' }, { caption: 'late-dish' }]);
 assert.equal(forwarded.history[0].review_count, 50);
 assert.equal(forwarded.history[0].category, 'その他');
 upstreamStatus = 502;
@@ -72,4 +77,4 @@ downloadsFail = true;
 const storageFailure = await handler(request(wish));
 assert.equal(storageFailure.status, 503);
 assert.ok(!(await storageFailure.text()).includes('secret upstream'));
-console.log('Edge Function runtime checks passed (auth, 0 records, photos, error compatibility, Storage failure).');
+console.log('Edge Function runtime checks passed (auth, 0 records, photos, dish features, error compatibility, Storage failure).');
