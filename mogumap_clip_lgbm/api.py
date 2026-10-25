@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import logging
+import secrets
 import time
 from collections import deque
 from threading import Lock
@@ -10,16 +12,30 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel, Field
 
-from ml import train_user, predict_for_user, MIN_RECORDS
-from recommend import extract_conditions, search_candidates
+from policy import MIN_TRAIN_RECORDS, MIN_ML_RECOMMEND_RECORDS, model_available
+from history import valid_history
+from repository import Repository
+from recommend import extract_conditions, search_candidates, with_candidate_photos, gemini_recommend
 
-app = FastAPI(title="MoguMap AI Backend", version="0.2")
+log = logging.getLogger(__name__)
+
+
+def train_user(*args, **kwargs):
+    from ml import train_user as train
+    return train(*args, **kwargs)
+
+
+def predict_for_user(*args, **kwargs):
+    from ml import predict_for_user as predict
+    return predict(*args, **kwargs)
+
+app = FastAPI(title="MoguMap AI Backend", version="0.3")
 _train_locks: dict[str, Lock] = {}
 
 
 def auth(x_api_key: str | None = Header(default=None)) -> None:
     key = os.getenv("AI_BACKEND_API_KEY")
-    if not key or x_api_key != key:
+    if not key or not secrets.compare_digest(x_api_key or "", key):
         raise HTTPException(401, "Invalid API key")
 
 
@@ -43,21 +59,22 @@ def rate_limit() -> None:
 
 
 class TrainRequest(BaseModel):
-    user_id: str
-    records: list[dict[str, Any]] = Field(min_length=MIN_RECORDS, max_length=2000)
+    user_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
+    records: list[dict[str, Any]] = Field(min_length=MIN_TRAIN_RECORDS, max_length=2000)
 
 
 class PredictRequest(BaseModel):
-    user_id: str
+    user_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
     history: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
+    model_version: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
     candidates: list[dict[str, Any]] = Field(min_length=1, max_length=100)
 
 
 class RecommendRequest(BaseModel):
-    user_id: str
+    user_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
     free_text: str = Field(min_length=1, max_length=500)
-    lat: float
-    lng: float
+    lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
     history: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
 
 
@@ -72,7 +89,9 @@ def train_endpoint(body: TrainRequest):
     if not lock.acquire(blocking=False):
         raise HTTPException(409, "training already running for this user")
     try:
-        return train_user(body.user_id, body.records)
+        # Developer-only training: never publish to ai_model_status.
+        history = valid_history(body.records, body.user_id)
+        return train_user(body.user_id, history)
     except ValueError as e:
         raise HTTPException(400, str(e))
     finally:
@@ -82,7 +101,7 @@ def train_endpoint(body: TrainRequest):
 @app.post("/predict", dependencies=[Depends(auth), Depends(rate_limit)])
 def predict_endpoint(body: PredictRequest):
     try:
-        return {"predictions": predict_for_user(body.user_id, body.history, body.candidates)}
+        return {"predictions": predict_for_user(body.user_id, body.history, body.candidates, version=body.model_version)}
     except FileNotFoundError as e:
         raise HTTPException(409, str(e))
     except ValueError as e:
@@ -91,36 +110,49 @@ def predict_endpoint(body: PredictRequest):
 
 @app.post("/recommend", dependencies=[Depends(auth), Depends(rate_limit)])
 def recommend_endpoint(body: RecommendRequest):
-    """渡された最新の履歴で毎回学習し直してから推論する(on-demand)。
-
-    5件ごとの自動バッチ学習は見送ったため、ここで常に最新のhistoryで学習し直すことで
-    モデルを更新し続ける(小データなのでLightGBMの再学習コストは小さい)。
-    """
-    if len(body.history) < MIN_RECORDS:
-        raise HTTPException(400, f"need >={MIN_RECORDS} registered stores before recommendations")
-
-    # 原因不明の遅延(同じ件数でも呼ぶたびに遅くなる)を調査するための一時的な計測ログ。
-    t0 = time.monotonic()
+    """Inference only. Training is handled exclusively by the worker/CLI."""
     try:
-        model_stats = train_user(body.user_id, body.history)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    t1 = time.monotonic()
-    conditions = extract_conditions(body.free_text)
-    t2 = time.monotonic()
-    candidates = search_candidates(conditions, body.lat, body.lng)
-    t3 = time.monotonic()
-    print(
-        f"[timing] user={body.user_id} history={len(body.history)} "
-        f"train={t1 - t0:.1f}s gemini={t2 - t1:.1f}s places={t3 - t2:.1f}s",
-        flush=True,
-    )
-    if not candidates:
-        return {"predictions": [], "conditions": conditions, "model_stats": model_stats}
+        history = valid_history(body.history, body.user_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    started = time.monotonic()
+    status = None
+    repository = None
+    if len(history) >= MIN_ML_RECOMMEND_RECORDS:
+        try:
+            repository = Repository()
+            status = repository.status(body.user_id)
+        except Exception as exc:
+            # Safe fallback; never log tokens, payloads, or upstream error bodies.
+            log.warning("model_status_unavailable error=%s", type(exc).__name__)
     try:
-        predictions = predict_for_user(body.user_id, body.history, candidates)
-    except FileNotFoundError as e:
-        raise HTTPException(409, str(e))
-    t4 = time.monotonic()
-    print(f"[timing] user={body.user_id} predict={t4 - t3:.1f}s total={t4 - t0:.1f}s", flush=True)
-    return {"predictions": predictions[:3], "conditions": conditions, "model_stats": model_stats}
+        conditions = extract_conditions(body.free_text)
+        candidates = search_candidates(conditions, body.lat, body.lng)
+        mode = "gemini"
+        predictions = None
+        if model_available(status):
+            try:
+                # Check generation before downloading candidate photos. Missing/corrupt
+                # artifacts trigger repair even when Places returns no candidates.
+                from ml import has_model
+                if not has_model(body.user_id, status["model_version"]):
+                    raise FileNotFoundError("published model unavailable")
+                photos = with_candidate_photos(candidates)
+                predictions = predict_for_user(body.user_id, history, photos,
+                                               version=status["model_version"])[:3]
+                mode = "lightgbm"
+            except Exception as exc:
+                log.warning("model_fallback error=%s", type(exc).__name__)
+                if repository is not None:
+                    try:
+                        repository.repair(body.user_id)
+                    except Exception as repair_exc:
+                        log.warning("model_repair_unavailable error=%s", type(repair_exc).__name__)
+        if predictions is None:
+            predictions = gemini_recommend(body.free_text, history, candidates)
+        log.info("recommend mode=%s history=%d candidates=%d total=%.3f",
+                 mode, len(history), len(candidates), time.monotonic() - started)
+        return {"predictions": predictions, "conditions": conditions, "mode": mode}
+    except Exception as exc:
+        log.warning("recommend_unavailable error=%s", type(exc).__name__)
+        raise HTTPException(502, "現在おすすめを取得できません。しばらくしてから再度お試しください") from exc

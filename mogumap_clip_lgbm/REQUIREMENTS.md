@@ -1,3 +1,7 @@
+> この文書は2026-10-24時点の設計履歴です。以下の「5件で推薦解禁」「5件の倍数学習」などは現行仕様ではありません。
+> 現行実装は [README.md](README.md)、更新後の方針は [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) を参照してください。
+> 2026-10-25の確定条件は、0〜5件はGemini、6件以上は学習済みLightGBM、初回学習6件・以降新規5件追加ごとです。推薦時には学習せず、GCPの定期Jobで実行します。
+
 # AIバックエンド 要件定義書
 
 元ネタ: Notion「AI育てる機能」(https://app.notion.com/p/4039efa583a080bdb8ecd23437c8308c)

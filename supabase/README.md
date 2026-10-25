@@ -3,7 +3,12 @@
 `supabase/functions/ai-recommend/` は、iOSの「AIを育てる」タブからのレコメンド要求を
 Cloud Run上のAIバックエンド(`mogumap_clip_lgbm/`)へ中継するEdge Function。
 APIキーをアプリに埋め込まないため、iOSはCloud Runを直接呼ばずこのEdge Function経由で呼ぶ。
-詳細は [mogumap_clip_lgbm/REQUIREMENTS.md](../mogumap_clip_lgbm/REQUIREMENTS.md) を参照。
+現行仕様・GCP自動実行手順は [AIバックエンドREADME](../mogumap_clip_lgbm/README.md) を参照。
+0〜5件はGemini、6件以上は公開済みLightGBM（未準備ならGemini）を使用します。
+推薦中に学習や統計保存は行いません。学習は6件で開始し、その後は新規5件ごとに
+Cloud Run Jobが実行し、`ai_model_status` をサーバー権限で更新します。
+追加migrationは `migrations/20261025120000_ai_background_training.sql`、
+一時DBの検証は `bash supabase/tests/check_ai_training_db.sh` です。
 
 デプロイと環境変数設定:
 
