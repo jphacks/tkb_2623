@@ -193,6 +193,56 @@ struct ProfileViewModelTests {
         #expect(viewModel.errorMessage == nil)
     }
 
+    @Test func defaultTargetIsMeAndIsOwnProfileIsTrue() async throws {
+        let viewModel = ProfileViewModel(
+            profileDataSource: FakeProfileDataSource(.success(makeProfile())),
+            storesDataSource: FakeStoresDataSource(.success([])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
+        )
+        #expect(viewModel.isOwnProfile == true)
+    }
+
+    @Test func friendTargetSetsIsOwnProfileFalseAndFetchesSpecifiedUser() async throws {
+        let friendID = UUID()
+        let friendProfile = makeProfile(name: "フレンド花子")
+        let fakeProfile = FakeProfileDataSource(.success(friendProfile))
+        let fakeStores = FakeStoresDataSource(.success([makeStore(name: "フレンドの店")]))
+        let viewModel = ProfileViewModel(
+            target: .friend(userID: friendID),
+            profileDataSource: fakeProfile,
+            storesDataSource: fakeStores,
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
+        )
+        #expect(viewModel.isOwnProfile == false)
+
+        await viewModel.load()
+
+        #expect(viewModel.displayName == "フレンド花子")
+        #expect(viewModel.recentRecords.map(\.storeName) == ["フレンドの店"])
+        #expect(fakeProfile.lastRequestedUserID == friendID)
+        #expect(fakeStores.lastRequestedUserID == friendID)
+        // 自分用の取得口は呼ばれない。
+        #expect(viewModel.errorMessage == nil)
+    }
+
+    @Test func friendTargetFriendCountIsAlwaysZero() async throws {
+        // FriendRepository.fetchFriendCount()はログイン中ユーザー自身のフレンド数しか返せないため、
+        // .friendターゲットでは呼ばれず常に0のままになることを確認する。
+        let fakeFriends = FakeFriendsDataSource()
+        fakeFriends.result = .success(5)
+        let viewModel = ProfileViewModel(
+            target: .friend(userID: UUID()),
+            profileDataSource: FakeProfileDataSource(.success(makeProfile())),
+            storesDataSource: FakeStoresDataSource(.success([])),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: fakeFriends
+        )
+        await viewModel.load()
+        #expect(viewModel.friendCount == 0)
+    }
+
     @Test func loadSetsCoverImageURLsForRecentRecords() async throws {
         let withPhoto = makeStore(name: "写真あり")
         let withoutPhoto = makeStore(name: "写真なし")
@@ -276,10 +326,19 @@ private final class FakeProfileDataSource: ProfileProfileDataSource {
     var mode: Mode
     var signedURLResult: Result<URL, any Error> = .success(URL(string: "https://example.com/avatar.jpg")!)
     private(set) var lastSignedURLPath: String?
+    private(set) var lastRequestedUserID: UUID?
 
     init(_ mode: Mode) { self.mode = mode }
 
     func fetchMyProfile() async throws -> UserProfile {
+        switch mode {
+        case let .success(profile): return profile
+        case let .failure(error): throw error
+        }
+    }
+
+    func fetchProfile(userID: UUID) async throws -> UserProfile {
+        lastRequestedUserID = userID
         switch mode {
         case let .success(profile): return profile
         case let .failure(error): throw error
@@ -300,9 +359,18 @@ private final class FakeStoresDataSource: ProfileStoresDataSource {
     }
 
     var mode: Mode
+    private(set) var lastRequestedUserID: UUID?
     init(_ mode: Mode) { self.mode = mode }
 
     func fetchStores() async throws -> [StoreRecord] {
+        switch mode {
+        case let .success(stores): return stores
+        case let .failure(error): throw error
+        }
+    }
+
+    func fetchStores(userID: UUID) async throws -> [StoreRecord] {
+        lastRequestedUserID = userID
         switch mode {
         case let .success(stores): return stores
         case let .failure(error): throw error
