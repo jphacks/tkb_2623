@@ -10,12 +10,25 @@ import UIKit
 /// 店舗記録の保存・取得（`RecordRepository`）。テストで差し替えられるようにプロトコルにしている。
 protocol StoreRecordRepository {
     func fetchStores() async throws -> [StoreRecord]
+    /// マップが使う、自分＋フォロー中フレンドの店舗。
+    func fetchVisibleStores() async throws -> VisibleStores
     func saveStore(_ input: StoreSaveInput) async throws -> StoreRecord
 }
 
 /// 記録画像のアップロード（`ImageRepository`）。
 protocol RecordImageUploading {
     func uploadImage(data: Data, storeID: UUID, format: RecordImageFormat) async throws -> ImageRecord
+}
+
+/// Google Places Detailsからの評価・価格帯・レビュー件数の取得。AIバックエンドの学習用スナップショット。
+protocol PlaceDetailsFetching: Sendable {
+    func fetchDetails(placeID: String) async throws -> PlaceDetails
+}
+
+struct PlacesPlaceDetailsFetcher: PlaceDetailsFetching {
+    func fetchDetails(placeID: String) async throws -> PlaceDetails {
+        try await findPlaceDetails(placeID: placeID)
+    }
 }
 
 extension RecordRepository: StoreRecordRepository {}
@@ -52,16 +65,25 @@ final class RecordStore {
     private(set) var records: [StoreRecord] = []
     private(set) var loadState: LoadState = .idle
 
+    /// マップ用の、自分＋フォロー中フレンドの店舗。
+    /// `records` と別に持つのは、含まれる範囲が違うため。
+    /// フレンドの記録はこちらにしか入らず、プロフィールなど自分の記録だけを扱う画面は `records` を使う。
+    private(set) var visibleStores: VisibleStores?
+    private(set) var visibleLoadState: LoadState = .idle
+
     private let recordRepository: any StoreRecordRepository
     private let imageUploader: any RecordImageUploading
+    private let placeDetailsFetcher: any PlaceDetailsFetching
 
     /// 引数を省略すると Supabase に接続する本番の Repository を使う。
     init(
         recordRepository: (any StoreRecordRepository)? = nil,
-        imageUploader: (any RecordImageUploading)? = nil
+        imageUploader: (any RecordImageUploading)? = nil,
+        placeDetailsFetcher: (any PlaceDetailsFetching)? = nil
     ) {
         self.recordRepository = recordRepository ?? RecordRepository()
         self.imageUploader = imageUploader ?? ImageRepository()
+        self.placeDetailsFetcher = placeDetailsFetcher ?? PlacesPlaceDetailsFetcher()
     }
 
     func load() async {
@@ -71,6 +93,17 @@ final class RecordStore {
             loadState = .loaded
         } catch {
             loadState = .failed(error.localizedDescription)
+        }
+    }
+
+    /// マップ用の一覧を取り込む。
+    func loadVisible() async {
+        visibleLoadState = .loading
+        do {
+            visibleStores = try await recordRepository.fetchVisibleStores()
+            visibleLoadState = .loaded
+        } catch {
+            visibleLoadState = .failed(error.localizedDescription)
         }
     }
 
@@ -90,6 +123,14 @@ final class RecordStore {
         }
 
         let existing = existingRecord(forPlaceID: draft.shop.placeID)
+        // ベストエフォート: 取得できなくても記録の保存自体は妨げない。
+        // 既存記録の再訪問時は前回値を保持し、無駄な再取得をしない。
+        let details: PlaceDetails?
+        if let existing {
+            details = PlaceDetails(rating: existing.googleRating, priceLevel: existing.priceLevel, userRatingCount: existing.reviewCount)
+        } else {
+            details = try? await placeDetailsFetcher.fetchDetails(placeID: draft.shop.placeID)
+        }
         let input = StoreSaveInput(
             id: existing?.id,
             name: draft.shop.name,
@@ -99,7 +140,10 @@ final class RecordStore {
             memo: draft.memo,
             repeatNum: (existing?.repeatNum ?? 0) + 1,
             latitude: draft.shop.latitude,
-            longitude: draft.shop.longitude
+            longitude: draft.shop.longitude,
+            googleRating: details?.rating,
+            priceLevel: details?.priceLevel,
+            reviewCount: details?.userRatingCount
         )
         let store = try await recordRepository.saveStore(input)
         upsertCache(store)
@@ -130,5 +174,13 @@ final class RecordStore {
     private func upsertCache(_ store: StoreRecord) {
         records.removeAll { $0.id == store.id }
         records.insert(store, at: 0)
+
+        // 保存した記録がマップにもすぐ反映されるようにする。未取得のときは
+        // loadVisible()がまとめて取り込むので、ここでは何もしない。
+        guard let visible = visibleStores else { return }
+        var stores = visible.stores
+        stores.removeAll { $0.id == store.id }
+        stores.insert(store, at: 0)
+        visibleStores = VisibleStores(currentUserID: visible.currentUserID, stores: stores)
     }
 }

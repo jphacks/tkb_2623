@@ -6,17 +6,17 @@
 import SwiftUI
 
 struct RecordCreateView: View {
+    /// 登録タブが選ばれているか。選ばれたときに写真がなければカメラを起動する。
+    var isActive = true
+
     @Environment(RecordStore.self) private var recordStore
     @State private var viewModel = RecordCreateViewModel()
+    @State private var isCameraPresented = false
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    Text("03 店舗登録")
-                        .font(.system(size: 20, weight: .bold))
-                        .padding(.top, 8)
-
                     VStack(alignment: .leading, spacing: 8) {
                         PhotoGridEditor(photos: $viewModel.photos)
                         fieldError(.photos)
@@ -70,6 +70,8 @@ struct RecordCreateView: View {
             if let summary = viewModel.savedSummary {
                 RecordSavedView(summary: summary) {
                     withAnimation(.snappy) { viewModel.savedSummary = nil }
+                    // 「続けて登録する」なので、そのまま次の撮影に進む。
+                    isCameraPresented = true
                 }
                 .transition(.opacity)
             }
@@ -79,6 +81,17 @@ struct RecordCreateView: View {
         .sensoryFeedback(.error, trigger: viewModel.showsValidationErrors) { _, new in new }
         .task(id: viewModel.searchKey) {
             await viewModel.search(for: viewModel.searchKey.origin)
+        }
+        // タブが選ばれたときだけ判定する（onAppear だとカメラを閉じた直後にも呼ばれて開き直す恐れがあるため）。
+        .onChange(of: isActive, initial: true) { _, isActive in
+            if isActive, viewModel.photos.isEmpty, viewModel.savedSummary == nil {
+                isCameraPresented = true
+            }
+        }
+        .fullScreenCover(isPresented: $isCameraPresented) {
+            CameraCaptureView(maxSelectionCount: RecordCreateViewModel.maxPhotoCount) { photos in
+                viewModel.addPhotos(photos)
+            }
         }
     }
 

@@ -305,6 +305,37 @@ struct RecordRepositoryTests {
         await #expect(throws: URLError.self) { try await offline.fetchStores() }
     }
 
+    @Test func fetchStoresWithUserIDFiltersBySpecifiedUser() async throws {
+        let friendID = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+        let friendJSON = recordJSON().replacingOccurrences(of: "\"user_id\":\"\(userID)\"", with: "\"user_id\":\"\(friendID)\"")
+        let rows = Data("[\(friendJSON)]".utf8)
+        let (repository, session) = try await makeRepository(listResponse: rows)
+        defer { session.invalidateAndCancel() }
+        let result = try await repository.fetchStores(userID: friendID)
+        #expect(result.count == 1)
+        #expect(result.first?.userID == friendID)
+
+        let request = try #require(StoresMockURLProtocol.requests.last)
+        #expect(request.httpMethod == "GET")
+        #expect(query(request, "select") == "*")
+        #expect(query(request, "user_id")?.lowercased() == "eq.\(friendID.uuidString.lowercased())")
+        #expect(query(request, "order") == "created_at.desc.nullslast,id.asc.nullslast")
+    }
+
+    @Test func fetchStoresWithUserIDReturnsEmptyWhenNoFollowRelation() async throws {
+        // フォロー関係のない相手を指定した場合、storeのRLSに該当する行がなく0件が返る（エラーにはしない）。
+        let (repository, session) = try await makeRepository(listResponse: Data("[]".utf8))
+        defer { session.invalidateAndCancel() }
+        let result = try await repository.fetchStores(userID: UUID())
+        #expect(result.isEmpty)
+    }
+
+    @Test func fetchStoresWithUserIDPropagatesErrors() async throws {
+        let (denied, session) = try await makeRepository(status: 403, listResponse: Data(#"{"code":"42501","message":"denied"}"#.utf8))
+        defer { session.invalidateAndCancel() }
+        await #expect(throws: PostgrestError.self) { try await denied.fetchStores(userID: UUID()) }
+    }
+
     @Test func fetchStoresContinuesAfterFullPage() async throws {
         let firstPage = Data(("[" + Array(repeating: recordJSON(), count: 1000).joined(separator: ",") + "]").utf8)
         let (repository, session) = try await makeRepository(listResponse: firstPage)

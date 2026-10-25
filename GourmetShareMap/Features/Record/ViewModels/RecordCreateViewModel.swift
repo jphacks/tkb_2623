@@ -62,6 +62,9 @@ final class RecordCreateViewModel {
         let coverImage: UIImage?
     }
 
+    /// 1 件の記録に付けられる写真の最大枚数。
+    static let maxPhotoCount = 10
+
     /// カテゴリの選択肢（`PlaceCategoryClassifier` の分類名）。
     static let categories = PlaceCategoryClassifier.categoryRules.map(\.name)
 
@@ -141,6 +144,11 @@ final class RecordCreateViewModel {
     var isSaving: Bool {
         if case .saving = saveState { return true }
         return false
+    }
+
+    /// カメラ・ライブラリで取得した写真を末尾に追加する（最大枚数まで）。
+    func addPhotos(_ newPhotos: [RecordPhoto]) {
+        photos.append(contentsOf: newPhotos.prefix(Self.maxPhotoCount - photos.count))
     }
 
     func retrySearch() {

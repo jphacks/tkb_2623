@@ -31,12 +31,52 @@ final class ImageRepository {
         }
     }
 
+    /// 指定した店舗の画像一覧。created_at昇順・id昇順で、先頭が「最初の写真」になる。
+    /// フレンドの店舗でも使うため`requireOwnedStore`は呼ばない。
+    /// 本人・フレンドの行だけが返ることは`image`のSELECT RLSポリシーが保証する。
+    /// 1店舗の画像は少数のためページ取得はしない。昇順で先頭から返るので、
+    /// 仮にSupabase標準の返却上限に達しても必要な先頭の行は欠けない。
+    func fetchImages(storeID: UUID) async throws -> [ImageRecord] {
+        _ = try await client.auth.session
+        return try await client.from("image").select()
+            .eq("store_id", value: storeID)
+            .order("created_at", ascending: true)
+            .order("id", ascending: true)
+            .execute().value
+    }
+
     /// 本人・フレンドの閲覧権限はDBとStorageの両方のRLSで検証される。
     func signedURL(imageID: UUID, expiresIn: Int = 3600) async throws -> URL {
         guard expiresIn > 0 else { throw ImageRepositoryError.invalidExpiration }
         _ = try await client.auth.session
         let image = try await fetchImage(imageID)
         return try await client.storage.from(bucket).createSignedURL(path: image.path, expiresIn: expiresIn)
+    }
+
+    /// 店舗ごとに最初にアップロードされた写真（表紙）の署名付きURL。写真が無い店舗はキーに含まれない。
+    /// タイムライン・プロフィールの一覧で使うため、image行の取得と署名をまとめて1往復ずつで行う。
+    func coverImageURLs(storeIDs: [UUID], expiresIn: Int = 3600) async throws -> [UUID: URL] {
+        guard expiresIn > 0 else { throw ImageRepositoryError.invalidExpiration }
+        guard !storeIDs.isEmpty else { return [:] }
+        let images: [ImageRecord] = try await client.from("image")
+            .select()
+            .in("store_id", values: storeIDs.map(\.uuidString))
+            .order("created_at", ascending: true)
+            .order("id", ascending: true)
+            .execute().value
+
+        var coverPaths: [UUID: String] = [:]
+        for image in images where coverPaths[image.storeID] == nil {
+            coverPaths[image.storeID] = image.path
+        }
+        guard !coverPaths.isEmpty else { return [:] }
+
+        let results: [SignedURLResult] = try await client.storage.from(bucket)
+            .createSignedURLs(paths: Array(coverPaths.values), expiresIn: expiresIn)
+        let urlsByPath = results.reduce(into: [String: URL]()) { result, item in
+            if let url = item.signedURL { result[item.path] = url }
+        }
+        return coverPaths.compactMapValues { urlsByPath[$0] }
     }
 
     /// Storageを先に削除する。DB削除失敗時は同じimageIDで再試行できる。

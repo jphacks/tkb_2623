@@ -21,9 +21,23 @@ DerivedData/
 # macOS
 .DS_Store
 
+# Python cache
+__pycache__/
+*.py[cod]
+
+mogumap_clip_lgbm/mogumap_clip_lgbm/artifacts/
+
 # Supabase secrets — fill in GourmetShareMap/Supabase/SupabaseConfig.swift locally,
 # copying it from SupabaseConfig.swift.example. Never commit the real values.
 GourmetShareMap/Supabase/SupabaseConfig.swift
 
 # Google Maps API key
 GourmetShareMap/Services/Places/GoogleMapsConfig.swift
+GourmetShareMap/Services/Gemini/GoogleGeminiConfig.swift
+GourmetShareMap/Services/Places/GoogleMapConfig.swift
+
+
+# Train models
+venv/
+mogumap_clip_lgbm/data/
+data/

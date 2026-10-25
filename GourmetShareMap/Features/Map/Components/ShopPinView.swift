@@ -4,29 +4,31 @@
 
 import SwiftUI
 
+/// 地図上の店舗ピン。`GMSMarker.icon` に渡すため `ImageRenderer` でビットマップ化される。
+/// そのためモデルではなく描画に必要な値だけを受け取り、キャッシュのキーにしやすくしている。
 struct ShopPinView: View {
-    let shop: MapShop
+    let category: String
+    let isMine: Bool
+    /// 自分とフレンドの両方が登録している店舗。フレンドアイコンを重ねる。
+    let sharedWithFriend: Bool
     let isSelected: Bool
+    /// 店舗の1枚目の写真。未登録・取得失敗時はnilで、カテゴリアイコンにフォールバックする。
+    var photo: UIImage?
 
     private let size: CGFloat = 56
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(categoryColor.opacity(0.55))
+                thumbnail
                     .frame(width: size, height: size)
-                    .overlay {
-                        Image(systemName: "fork.knife")
-                            .font(.system(size: 20))
-                            .foregroundStyle(.white)
-                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(borderColor, lineWidth: 3)
                     }
 
-                if shop.sharedWithFriend {
+                if sharedWithFriend {
                     Circle()
                         .fill(Color.white)
                         .frame(width: 20, height: 20)
@@ -44,23 +46,33 @@ struct ShopPinView: View {
                 .fill(categoryColor)
                 .frame(width: 14, height: 9)
         }
+        // ビットマップ化するため、影やアイコンのはみ出しが切れないよう余白を確保する。
+        .padding(6)
         .scaleEffect(isSelected ? 1.12 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
     }
 
-    private var categoryColor: Color {
-        switch shop.category {
-        case "ラーメン": Color(red: 0.86, green: 0.42, blue: 0.24)
-        case "洋食": Color(red: 0.33, green: 0.52, blue: 0.80)
-        case "和食": Color(red: 0.45, green: 0.62, blue: 0.42)
-        case "中華": Color(red: 0.80, green: 0.60, blue: 0.20)
-        case "カフェ": Color(red: 0.56, green: 0.43, blue: 0.31)
-        default: Color.gray
+    @ViewBuilder
+    private var thumbnail: some View {
+        if let photo {
+            Image(uiImage: photo)
+                .resizable()
+                .scaledToFill()
+        } else {
+            categoryColor.opacity(0.55)
+                .overlay {
+                    Image(systemName: StoreCategoryStyle.symbolName(for: category))
+                        .font(.system(size: 20))
+                        .foregroundStyle(.white)
+                }
         }
     }
 
+    private var categoryColor: Color {
+        StoreCategoryStyle.color(for: category)
+    }
+
     private var borderColor: Color {
-        shop.owner == .me ? Color.white : categoryColor
+        isMine ? Color.white : categoryColor
     }
 }
 
@@ -77,8 +89,9 @@ private struct PinTailShape: Shape {
 
 #Preview {
     HStack(spacing: 24) {
-        ShopPinView(shop: MapMockData.shops[0], isSelected: true)
-        ShopPinView(shop: MapMockData.shops[3], isSelected: false)
+        ShopPinView(category: "ラーメン・麺類", isMine: true, sharedWithFriend: true, isSelected: true)
+        ShopPinView(category: "洋食・西洋料理", isMine: false, sharedWithFriend: false, isSelected: false)
+        ShopPinView(category: "カフェ・喫茶", isMine: true, sharedWithFriend: false, isSelected: false)
     }
     .padding()
     .background(Color(red: 0.90, green: 0.93, blue: 0.87))

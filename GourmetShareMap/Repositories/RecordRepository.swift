@@ -23,6 +23,13 @@ enum StoreSaveError: LocalizedError, Equatable {
     }
 }
 
+/// マップに表示する店舗一覧と、その取得に使ったログインユーザーのID。
+/// 自分の店舗とフレンドの店舗をピンの色などで出し分けるために、IDを同梱する。
+nonisolated struct VisibleStores: Sendable {
+    let currentUserID: UUID
+    let stores: [StoreRecord]
+}
+
 @MainActor
 final class RecordRepository {
     private let client: SupabaseClient
@@ -39,6 +46,14 @@ final class RecordRepository {
     /// created_at降順・id昇順。Supabase標準の最大返却件数に合わせてページ取得する。
     func fetchStores() async throws -> [StoreRecord] {
         let userID = try await client.auth.session.user.id
+        return try await fetchStores(userID: userID)
+    }
+
+    /// 指定した`userID`の店舗記録一覧。座標がNULLの行も返す。
+    /// 友達のプロフィール表示用。storeのRLS（自分の行 or フォロー中ユーザーの行）の範囲でのみ取得できる。
+    /// フォロー関係のない相手を指定した場合は0件が返る（エラーにはならない）。
+    /// created_at降順・id昇順。Supabase標準の最大返却件数に合わせてページ取得する。
+    func fetchStores(userID: UUID) async throws -> [StoreRecord] {
         let pageSize = 1000
         var records: [StoreRecord] = []
         while true {
@@ -51,6 +66,31 @@ final class RecordRepository {
                 .execute().value
             records.append(contentsOf: page)
             if page.count < pageSize { return records }
+        }
+    }
+
+    /// マップ向けの、自分とフレンド（自分がフォローしている相手）の店舗記録一覧。
+    /// フレンドの行は`store`のSELECT RLSポリシー（自分の行 or フォロー相手の行）で返るため、
+    /// クエリ側では`user_id`で絞り込まない。`fetchStores()`との違いはこの絞り込みの有無だけ。
+    /// `fetchStores()`と同様に座標がNULLの行も返すので、ピン表示側で座標のある行を選ぶ。
+    /// 自分の店舗とフレンドの店舗の判別用に、認証の往復を増やさず同じセッションの
+    /// ユーザーIDを`VisibleStores.currentUserID`として返す。
+    /// created_at降順・id昇順。Supabase標準の最大返却件数に合わせてページ取得する。
+    func fetchVisibleStores() async throws -> VisibleStores {
+        let currentUserID = try await client.auth.session.user.id
+        let pageSize = 1000
+        var records: [StoreRecord] = []
+        while true {
+            let page: [StoreRecord] = try await client.from("store")
+                .select()
+                .order("created_at", ascending: false)
+                .order("id", ascending: true)
+                .range(from: records.count, to: records.count + pageSize - 1)
+                .execute().value
+            records.append(contentsOf: page)
+            if page.count < pageSize {
+                return VisibleStores(currentUserID: currentUserID, stores: records)
+            }
         }
     }
 
@@ -77,7 +117,8 @@ final class RecordRepository {
             userID: session.user.id,
             googlePlaceID: placeID.flatMap { $0.isEmpty ? nil : $0 },
             memo: input.memo, repeatNum: input.repeatNum,
-            latitude: input.latitude, longitude: input.longitude
+            latitude: input.latitude, longitude: input.longitude,
+            googleRating: input.googleRating, priceLevel: input.priceLevel, reviewCount: input.reviewCount
         )
 
         if let id = input.id {
@@ -130,12 +171,18 @@ private nonisolated struct StoreSavePayload: Encodable {
     let repeatNum: Int
     let latitude: Double
     let longitude: Double
+    let googleRating: Double?
+    let priceLevel: Int?
+    let reviewCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case name, category, reputation, memo, latitude, longitude
         case userID = "user_id"
         case googlePlaceID = "google_place_id"
         case repeatNum = "repeat_num"
+        case googleRating = "google_rating"
+        case priceLevel = "price_level"
+        case reviewCount = "review_count"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -150,5 +197,8 @@ private nonisolated struct StoreSavePayload: Encodable {
         try container.encode(repeatNum, forKey: .repeatNum)
         try container.encode(latitude, forKey: .latitude)
         try container.encode(longitude, forKey: .longitude)
+        try container.encode(googleRating, forKey: .googleRating)
+        try container.encode(priceLevel, forKey: .priceLevel)
+        try container.encode(reviewCount, forKey: .reviewCount)
     }
 }

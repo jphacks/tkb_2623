@@ -66,10 +66,9 @@ struct PhotoGridEditor: View {
             }
         }
         .fullScreenCover(isPresented: $isCameraPresented) {
-            CameraPicker { image in
-                Task { apply(await RecordPhoto.make(fromCapturedImage: image)) }
+            CameraCaptureView(maxSelectionCount: target == .add ? max(maxCount - photos.count, 1) : 1) { captured in
+                captured.forEach(apply)
             }
-            .ignoresSafeArea()
         }
         .photosPicker(
             isPresented: $isLibraryPresented,
@@ -244,14 +243,7 @@ struct PhotoGridEditor: View {
         isLoading = true
         defer { isLoading = false }
 
-        var loaded: [RecordPhoto] = []
-        for item in items {
-            guard
-                let data = try? await item.loadTransferable(type: Data.self),
-                let photo = await RecordPhoto.make(from: data)
-            else { continue }
-            loaded.append(photo)
-        }
+        let loaded = await RecordPhoto.load(from: items)
         if loaded.count < items.count {
             errorMessage = "一部の写真を読み込めませんでした"
         }
