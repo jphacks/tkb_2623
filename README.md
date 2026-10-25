@@ -2,6 +2,8 @@
 
 [![もぐマップ — あなたと友達の記録が、次の一軒を連れてくる。](docs/images/mogumap-banner.png)](https://www.youtube.com/watch?v=piaNsc6ilBI)
 
+▶ **PV動画**: [Google Drive で見る](https://drive.google.com/drive/folders/15Ywn2bS1_gblKCrfd140izWTkwb9y0Ll?usp=drive_link)
+
 ## 製品概要
 
 写真を撮るだけでお店のレビューを記録でき、味の感覚が近い友達と共有できる iOS アプリです。
