@@ -9,10 +9,14 @@ import SwiftUI
 struct TimelinePostCard: View {
     let post: TimelinePost
     let timeText: String
+    /// 他ユーザーの投稿のときだけ渡す。指定すると、ブロックの確認後にこれが呼ばれる。
+    var onBlock: (() -> Void)?
     /// アバター・名前タップ時の処理。プロフィール画面をシート表示する等、呼び出し側に委ねる。
     var onTapUser: () -> Void = {}
     var onTapLike: () -> Void = {}
     var onTapComments: () -> Void = {}
+
+    @State private var isShowingBlockConfirmation = false
 
     private let cornerRadius: CGFloat = 18
 
@@ -35,6 +39,25 @@ struct TimelinePostCard: View {
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             .accessibilityElement(children: .combine)
+            .contextMenu {
+                if !post.isMine, onBlock != nil {
+                    Button(role: .destructive) {
+                        isShowingBlockConfirmation = true
+                    } label: {
+                        Label("このユーザーをブロック", systemImage: "hand.raised.slash")
+                    }
+                }
+            }
+            .confirmationDialog(
+                "\(post.userName ?? "このユーザー")をブロックしますか？",
+                isPresented: $isShowingBlockConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("ブロックする", role: .destructive) { onBlock?() }
+                Button("キャンセル", role: .cancel) {}
+            } message: {
+                Text("ブロックすると、お互いの記録が見えなくなり、フォロー関係も解除されます。")
+            }
     }
 
     private var actionRow: some View {
