@@ -62,7 +62,8 @@ struct MascotCharacterMappingTests {
         StoreRecord(
             id: UUID(), name: "test", category: category, reputation: nil,
             userID: UUID(), googlePlaceID: nil, memo: nil, repeatNum: 1,
-            latitude: nil, longitude: nil, createdAt: .now
+            latitude: nil, longitude: nil, createdAt: .now,
+            googleRating: nil, priceLevel: nil, reviewCount: nil
         )
     }
 
