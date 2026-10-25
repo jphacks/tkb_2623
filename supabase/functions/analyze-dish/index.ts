@@ -1,5 +1,8 @@
-// 記録写真（image 行）の追加を Database Webhook で受け取り、料理の特徴を抽出して dish_analysis に保存する。
+// 記録写真（image 行）の追加を Database Webhook で受け取り、料理の特徴を抽出して image.dish_features に保存する。
 // 設計と設定手順: supabase/DISH_ANALYSIS.md
+//
+// Webhook は JWT を付けずに呼ぶため、デプロイ時は JWT 検証を無効にする（--no-verify-jwt）。
+// 代わりに x-webhook-secret ヘッダーで呼び出し元を確認する。
 //
 // 必要な Secret（本番はダッシュボードの Edge Functions > Secrets、ローカルは supabase/functions/.env.local）:
 //   GEMINI_API_KEY               Google AI Studio で発行した Gemini API キー
@@ -34,7 +37,7 @@ Deno.serve(async (req) => {
   }
 
   const webhookSecret = Deno.env.get("ANALYZE_DISH_WEBHOOK_SECRET");
-  if (!webhookSecret || req.headers.get("x-webhook-secret") !== webhookSecret) {
+  if (!webhookSecret || !timingSafeEqual(req.headers.get("x-webhook-secret") ?? "", webhookSecret)) {
     return json({ error: "unauthorized" }, 401);
   }
 
@@ -43,36 +46,43 @@ Deno.serve(async (req) => {
     return json({ error: "GEMINI_API_KEY が設定されていません" }, 500);
   }
 
-  const payload = (await req.json()) as WebhookPayload;
+  let payload: WebhookPayload;
+  try {
+    payload = await req.json();
+  } catch {
+    return json({ error: "invalid json" }, 400);
+  }
   if (payload.type !== "INSERT" || payload.table !== "image" || !payload.record) {
     return json({ skipped: true });
   }
   const image = payload.record;
   const model = Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL;
 
-  // RLS を迂回して書き込むため service role で接続する（dish_analysis はアプリから書き込めない）。
+  // dish_features はアプリから書き込まないため、RLS を迂回できる service role で接続する。
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // store_id / user_id はトリガーが image から設定する。
-  const { error } = await supabase
-    .from("dish_analysis")
-    .upsert(
-      { image_id: image.id, status: "pending", schema_version: SCHEMA_VERSION, model },
-      { onConflict: "image_id" },
-    );
+  const { data: updated, error } = await supabase
+    .from("image")
+    .update({ dish_features: null, dish_features_status: "pending" })
+    .eq("id", image.id)
+    .select("id");
   if (error) {
     return json({ error: error.message }, 500);
   }
+  if (updated.length === 0) {
+    // Webhook が届く前に写真が削除された。
+    return json({ skipped: true });
+  }
 
-  // Gemini は1枚に数十秒〜100秒以上かかるため、Webhook には先に応答し、解析は裏で続ける。
+  // Gemini は1枚に数十秒かかることがあるため、Webhook には先に応答し、解析は裏で続ける。
   EdgeRuntime.waitUntil(analyzeAndSave(supabase, image, geminiApiKey, model));
   return json({ imageId: image.id, status: "pending" }, 202);
 });
 
-/** 写真を解析し、結果を dish_analysis に保存する（失敗時は status = failed と error）。 */
+/** 写真を解析し、結果を image.dish_features に保存する（失敗時は dish_features_status = failed）。 */
 async function analyzeAndSave(
   supabase: SupabaseClient,
   image: ImageRow,
@@ -98,7 +108,7 @@ async function analyzeAndSave(
       .download(image.image);
     if (downloadError) throw new Error(`写真の取得に失敗しました: ${downloadError.message}`);
 
-    const result = await analyzeDishImage({
+    const features = await analyzeDishImage({
       apiKey,
       model,
       category,
@@ -106,30 +116,38 @@ async function analyzeAndSave(
       mimeType: file.type || "image/jpeg",
     });
 
-    await updateAnalysis(supabase, image.id, {
-      status: "done",
-      category,
-      format: result.format ?? null,
-      lineage: result.lineage ?? null,
-      result,
-      error: null,
+    await updateImage(supabase, image.id, {
+      dish_features: { schema_version: SCHEMA_VERSION, model, features },
+      dish_features_status: "done",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`analyze-dish failed (image ${image.id}): ${message}`);
-    await updateAnalysis(supabase, image.id, { status: "failed", error: message });
+    await updateImage(supabase, image.id, { dish_features_status: "failed" });
   }
 }
 
-async function updateAnalysis(
+async function updateImage(
   supabase: SupabaseClient,
   imageId: string,
   values: Record<string, unknown>,
 ): Promise<void> {
-  const { error } = await supabase.from("dish_analysis").update(values).eq("image_id", imageId);
+  const { error } = await supabase.from("image").update(values).eq("id", imageId);
   if (error) {
-    console.error(`dish_analysis の更新に失敗しました（image ${imageId}）: ${error.message}`);
+    console.error(`image の更新に失敗しました（image ${imageId}）: ${error.message}`);
   }
+}
+
+/** 合言葉の比較で、一致した文字数が応答時間から分からないようにする。 */
+function timingSafeEqual(a: string, b: string): boolean {
+  const encoder = new TextEncoder();
+  const left = encoder.encode(a);
+  const right = encoder.encode(b);
+  let diff = left.length ^ right.length;
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    diff |= (left[i] ?? 0) ^ (right[i] ?? 0);
+  }
+  return diff === 0;
 }
 
 function json(body: unknown, status = 200): Response {

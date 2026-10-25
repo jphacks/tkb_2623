@@ -6,7 +6,8 @@ import { buildResponseSchema, buildSystemInstruction, buildUserPrompt } from "./
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
 // gemini-3.8-flash は1枚に数分かかり Edge Function の実行時間内に収まらないため、軽量版を使う（2026-10-25 計測）。
-export const DEFAULT_MODEL = "gemini-3.1-flash-lite";
+// 軽量版のうち最新の安定版。遅い場合は Secret の GEMINI_MODEL で gemini-3.1-flash-lite に戻せる。
+export const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 export type AnalyzeInput = {
   apiKey: string;
