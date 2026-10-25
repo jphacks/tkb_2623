@@ -53,18 +53,9 @@ protocol RecommendServing: Sendable {
     /// 学習済みモデルの状態。`records` は、APIの結果が無いあいだモックが件数から仮の精度を作るために渡している。
     func fetchModelStats(records: [StoreRecord]) async throws -> ModelStats
     /// フリーテキスト（「ラーメン食べたい」等）と現在地から、おすすめ上位3件を受け取る。
-    /// `records` は学習データ件数のチェック（未登録なら `notEnoughRecords`）に使う。
+    /// 記録が0件でも呼べる（記録が少ないあいだはAIバックエンドがGeminiで候補を選ぶ）。
+    /// `records` は、APIの結果が無いあいだモックがそれらしいおすすめを組み立てるために渡している。
     func recommend(freeText: String, latitude: Double, longitude: Double, records: [StoreRecord]) async throws -> [Recommendation]
-}
-
-enum RecommendError: LocalizedError, Equatable {
-    case notEnoughRecords
-
-    var errorDescription: String? {
-        switch self {
-        case .notEnoughRecords: return "まずはお店を5件登録してください。"
-        }
-    }
 }
 
 /// APIが繋がるまでの仮実装。自分の記録の内容から、それらしいおすすめと精度を組み立てる。
@@ -80,7 +71,6 @@ struct MockRecommendService: RecommendServing {
     }
 
     func recommend(freeText: String, latitude: Double, longitude: Double, records: [StoreRecord]) async throws -> [Recommendation] {
-        guard !records.isEmpty else { throw RecommendError.notEnoughRecords }
         try await Task.sleep(for: delay)
 
         let categories = Self.topCategories(in: records, limit: 3)

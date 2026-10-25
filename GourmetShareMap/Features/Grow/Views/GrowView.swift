@@ -152,77 +152,71 @@ struct GrowView: View {
     }
 
     private var recommendSection: some View {
+        // 登録0件からレコメンドできる。記録が少ないあいだ(有効な履歴0〜5件)はAIバックエンドが
+        // Geminiで候補を選び、6件以上で学習済みのLightGBMモデルに切り替わる(mogumap_clip_lgbm/policy.py)。
         VStack(spacing: 10) {
-            if progress.level == .lv1 {
-                // Lv.1（登録0〜4件）はAIがまだ学習できないため、レコメンドUI自体を出さない。
-                Text(progress.progressText + "、AIがレコメンドできるようになります")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(.appText.opacity(0.55))
+            Text("どんなお店に行きたい?")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.appText.opacity(0.55))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            TextField(
+                "", text: $freeText, prompt: Text("例: 渋谷で静かなデート向けの和食").foregroundStyle(.appText.opacity(0.35)),
+                axis: .vertical
+            )
+            .font(.system(size: 14.5))
+            .foregroundStyle(.appText)
+            .tint(.appPrimary)
+            .focused($isFreeTextFocused)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(.appCard, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(isFreeTextFocused ? Color.appPrimary.opacity(0.6) : .appBorder, lineWidth: 1.5)
+            }
+            .submitLabel(.search)
+            .onSubmit { requestRecommend() }
+            .onChange(of: freeText) { showsEmptyTextError = false }
+
+            Button {
+                requestRecommend()
+            } label: {
+                HStack(spacing: 8) {
+                    if viewModel.isRecommending {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 17, weight: .bold))
+                    }
+
+                    Text(viewModel.isRecommending ? "考えています…" : "レコメンドしてもらう")
+                        .font(.system(size: 16.5, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(.appPrimary, in: Capsule())
+            }
+            .disabled(viewModel.isRecommending || !canRecommend)
+            .opacity(canRecommend ? 1 : 0.45)
+
+            if showsEmptyTextError {
+                Text("行きたい気分や食べたいものを入力してください")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.appPrimary)
+                    .multilineTextAlignment(.center)
+            } else if let message = viewModel.recommendErrorMessage {
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.appPrimary)
                     .multilineTextAlignment(.center)
             } else {
-                Text("どんなお店に行きたい?")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.appText.opacity(0.55))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                TextField(
-                    "", text: $freeText, prompt: Text("例: 渋谷で静かなデート向けの和食").foregroundStyle(.appText.opacity(0.35)),
-                    axis: .vertical
-                )
-                .font(.system(size: 14.5))
-                .foregroundStyle(.appText)
-                .tint(.appPrimary)
-                .focused($isFreeTextFocused)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .background(.appCard, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(isFreeTextFocused ? Color.appPrimary.opacity(0.6) : .appBorder, lineWidth: 1.5)
-                }
-                .submitLabel(.search)
-                .onSubmit { requestRecommend() }
-                .onChange(of: freeText) { showsEmptyTextError = false }
-
-                Button {
-                    requestRecommend()
-                } label: {
-                    HStack(spacing: 8) {
-                        if viewModel.isRecommending {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 17, weight: .bold))
-                        }
-
-                        Text(viewModel.isRecommending ? "考えています…" : "レコメンドしてもらう")
-                            .font(.system(size: 16.5, weight: .bold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .background(.appPrimary, in: Capsule())
-                }
-                .disabled(viewModel.isRecommending || !canRecommend)
-                .opacity(canRecommend ? 1 : 0.45)
-
-                if showsEmptyTextError {
-                    Text("行きたい気分や食べたいものを入力してください")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.appPrimary)
-                        .multilineTextAlignment(.center)
-                } else if let message = viewModel.recommendErrorMessage {
-                    Text(message)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.appPrimary)
-                        .multilineTextAlignment(.center)
-                } else {
-                    Text("近くのお店から、まんぷく先生が好みを予測します")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(.appText.opacity(0.45))
-                        .multilineTextAlignment(.center)
-                }
+                Text("近くのお店から、まんぷく先生が好みを予測します")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.appText.opacity(0.45))
+                    .multilineTextAlignment(.center)
             }
         }
         .padding(.top, 2)
@@ -239,9 +233,9 @@ struct GrowView: View {
         Task { await viewModel.recommend(freeText: text, records: recordStore.records) }
     }
 
-    /// 記録を読み込めていて、レコメンドが解禁されるLv.2以上のときだけ押せる。
+    /// 記録を読み込めているときだけ押せる。
     private var canRecommend: Bool {
-        recordStore.loadState == .loaded && progress.level != .lv1
+        recordStore.loadState == .loaded
     }
 
     private var recommendationSheetBinding: Binding<Bool> {

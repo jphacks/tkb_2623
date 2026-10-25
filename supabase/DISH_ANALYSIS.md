@@ -33,6 +33,7 @@
 | JSON のテンプレート（形式・系統・部品・選択肢） | `functions/analyze-dish/vocab/v1.ts` | 実装済み（全13カテゴリ） |
 | Database Webhook の設定 | ダッシュボード | 下記の手順で設定 |
 | アプリで解析結果を読む・表示する | `GourmetShareMap/` | 対象外（今は保存まで） |
+| レコメンド（Geminiモード）の入力に使う | `functions/ai-recommend/index.ts` / `mogumap_clip_lgbm/recommend.py` | 実装済み（直近10店の `features` を渡す） |
 
 ## 判定の流れ
 
