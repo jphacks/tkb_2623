@@ -66,6 +66,10 @@
 | タイムライン | 友達が直近3日間に行ったお店が新しい順に流れてくる。いいね・コメントができる |
 | プロフィール | 自分の記録の写真グリッドと統計、プロフィール編集、フレンド・ブロックの管理 |
 
+| 育てる | おすすめ結果 | マップ | 登録 | タイムライン |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/images/screen-grow.png" width="150" alt="育てるタブ：キャラクターの成長と気分の入力"> | <img src="docs/images/screen-recommend.png" width="150" alt="おすすめ結果：好みに合うお店を3軒提案"> | <img src="docs/images/screen-map.png" width="150" alt="マップタブ：自分と友達の記録を写真ピンで表示"> | <img src="docs/images/screen-register.png" width="150" alt="登録タブ：撮影位置からお店を自動で選択"> | <img src="docs/images/screen-timeline.png" width="150" alt="タイムラインタブ：友達の最新の記録"> |
+
 ## 特長
 
 ### 土台: 写真を撮るだけで、お店が自動で登録される
