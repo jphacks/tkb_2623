@@ -99,11 +99,13 @@ class ApiTests(unittest.TestCase):
     @patch('api.predict_for_user', return_value=[])
     def test_six_uses_published_model(self, predict, photos, has, gemini, search, extract, repo):
         repo.return_value.status.return_value = status()
+        repo.return_value.history.return_value = records()
         response = self.request(6)
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['mode'], 'lightgbm')
         self.assertEqual(predict.call_args.kwargs['version'], 'generation-1')
         gemini.assert_not_called()
+        repo.return_value.history.assert_called_once_with("demo")
 
     @patch('api.Repository')
     @patch('api.extract_conditions', return_value={})
@@ -115,6 +117,7 @@ class ApiTests(unittest.TestCase):
         response = self.request(6)
         self.assertEqual(response.json()['mode'], 'gemini')
         repo.return_value.repair.assert_called_once_with('demo')
+        repo.return_value.history.assert_not_called()
 
     @patch('api.Repository')
     @patch('api.extract_conditions', return_value={})
