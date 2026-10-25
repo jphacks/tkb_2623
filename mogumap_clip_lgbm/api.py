@@ -13,11 +13,16 @@ from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel, Field
 
 from policy import MIN_TRAIN_RECORDS, MIN_ML_RECOMMEND_RECORDS, model_available
-from history import valid_history
+from metadata import metadata_history
 from repository import Repository
 from recommend import extract_conditions, search_candidates, with_candidate_photos, gemini_recommend
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("uvicorn.error")
+
+
+def valid_history(*args, **kwargs):
+    from history import valid_history as validate
+    return validate(*args, **kwargs)
 
 
 def train_user(*args, **kwargs):
@@ -111,11 +116,13 @@ def predict_endpoint(body: PredictRequest):
 @app.post("/recommend", dependencies=[Depends(auth), Depends(rate_limit)])
 def recommend_endpoint(body: RecommendRequest):
     """Inference only. Training is handled exclusively by the worker/CLI."""
+    started = time.monotonic()
     try:
-        history = valid_history(body.history, body.user_id)
+        history = metadata_history(body.history, body.user_id)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    started = time.monotonic()
+    timings = {"metadata": time.monotonic() - started}
+    stage_started = time.monotonic()
     status = None
     repository = None
     if len(history) >= MIN_ML_RECOMMEND_RECORDS:
@@ -125,33 +132,53 @@ def recommend_endpoint(body: RecommendRequest):
         except Exception as exc:
             # Safe fallback; never log tokens, payloads, or upstream error bodies.
             log.warning("model_status_unavailable error=%s", type(exc).__name__)
+    timings["model_status"] = time.monotonic() - stage_started
     try:
+        stage_started = time.monotonic()
         conditions = extract_conditions(body.free_text)
+        timings["conditions"] = time.monotonic() - stage_started
+        stage_started = time.monotonic()
         candidates = search_candidates(conditions, body.lat, body.lng)
+        timings["places"] = time.monotonic() - stage_started
         mode = "gemini"
         predictions = None
         if model_available(status):
+            phase = "model"
             try:
-                # Check generation before downloading candidate photos. Missing/corrupt
-                # artifacts trigger repair even when Places returns no candidates.
+                # Verify the published artifact before fetching any photos, so a
+                # missing model falls back to Gemini without downloading images.
+                stage_started = time.monotonic()
                 from ml import has_model
                 if not has_model(body.user_id, status["model_version"]):
                     raise FileNotFoundError("published model unavailable")
-                photos = with_candidate_photos(candidates)
-                predictions = predict_for_user(body.user_id, history, photos,
-                                               version=status["model_version"])[:3]
-                mode = "lightgbm"
+                timings["model_load"] = time.monotonic() - stage_started
+                phase = "history"
+                stage_started = time.monotonic()
+                ml_history = repository.history(body.user_id)
+                timings["history_images"] = time.monotonic() - stage_started
+                if len(ml_history) >= MIN_ML_RECOMMEND_RECORDS:
+                    phase = "predict"
+                    stage_started = time.monotonic()
+                    photos = with_candidate_photos(candidates)
+                    predictions = predict_for_user(body.user_id, ml_history, photos,
+                                                   version=status["model_version"])[:3]
+                    timings["ml"] = time.monotonic() - stage_started
+                    mode = "lightgbm"
             except Exception as exc:
-                log.warning("model_fallback error=%s", type(exc).__name__)
-                if repository is not None:
+                log.warning("model_fallback phase=%s error=%s", phase, type(exc).__name__)
+                # A temporary history download failure is not a broken model.
+                if repository is not None and phase != "history":
                     try:
                         repository.repair(body.user_id)
                     except Exception as repair_exc:
                         log.warning("model_repair_unavailable error=%s", type(repair_exc).__name__)
         if predictions is None:
+            stage_started = time.monotonic()
             predictions = gemini_recommend(body.free_text, history, candidates)
-        log.info("recommend mode=%s history=%d candidates=%d total=%.3f",
-                 mode, len(history), len(candidates), time.monotonic() - started)
+            timings["gemini_rank"] = time.monotonic() - stage_started
+        log.info("recommend mode=%s history=%d candidates=%d total=%.3f stages=%s",
+                 mode, len(history), len(candidates), time.monotonic() - started,
+                 {k: round(v, 3) for k, v in timings.items()})
         return {"predictions": predictions, "conditions": conditions, "mode": mode}
     except Exception as exc:
         log.warning("recommend_unavailable error=%s", type(exc).__name__)

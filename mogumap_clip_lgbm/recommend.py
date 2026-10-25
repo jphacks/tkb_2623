@@ -16,7 +16,7 @@ from policy import CATEGORIES
 
 PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
 LOCATION = os.getenv("VERTEX_LOCATION", "global")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 PLACES_API_KEY = os.getenv("PLACES_API_KEY")
 
 _CONDITION_SCHEMA = {

@@ -7,7 +7,6 @@ from urllib.parse import quote
 
 import requests
 
-from history import store_record, valid_history
 from policy import MAX_RECORDS
 
 
@@ -33,6 +32,7 @@ class Repository:
         return rows[0] if rows else None
 
     def history(self, user_id: str) -> list[dict]:
+        from history import store_record, valid_history
         stores = []
         for offset in range(0, MAX_RECORDS + 1, 500):
             page = self.request("GET", "/rest/v1/store", params={
