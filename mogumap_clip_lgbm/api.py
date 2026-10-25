@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections import deque
 from threading import Lock
 from typing import Any
 
@@ -20,6 +21,25 @@ def auth(x_api_key: str | None = Header(default=None)) -> None:
     key = os.getenv("AI_BACKEND_API_KEY")
     if not key or x_api_key != key:
         raise HTTPException(401, "Invalid API key")
+
+
+# 共有シークレットが万一漏れた場合の被害を抑えるための簡易レート制限。
+# インスタンス単位のメモリ内カウントなので(Cloud Runは複数インスタンスに分散しうる)
+# 厳密なグローバル制限ではないが、Gemini/Places/学習を呼ぶ高コストエンドポイントの
+# 上限を低く抑える保険として十分。
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "20"))
+_request_times: deque[float] = deque()
+_rate_lock = Lock()
+
+
+def rate_limit() -> None:
+    now = time.monotonic()
+    with _rate_lock:
+        while _request_times and now - _request_times[0] > 60:
+            _request_times.popleft()
+        if len(_request_times) >= RATE_LIMIT_PER_MINUTE:
+            raise HTTPException(429, "rate limit exceeded, try again shortly")
+        _request_times.append(now)
 
 
 class TrainRequest(BaseModel):
@@ -46,7 +66,7 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/train", dependencies=[Depends(auth)])
+@app.post("/train", dependencies=[Depends(auth), Depends(rate_limit)])
 def train_endpoint(body: TrainRequest):
     lock = _train_locks.setdefault(body.user_id, Lock())
     if not lock.acquire(blocking=False):
@@ -59,7 +79,7 @@ def train_endpoint(body: TrainRequest):
         lock.release()
 
 
-@app.post("/predict", dependencies=[Depends(auth)])
+@app.post("/predict", dependencies=[Depends(auth), Depends(rate_limit)])
 def predict_endpoint(body: PredictRequest):
     try:
         return {"predictions": predict_for_user(body.user_id, body.history, body.candidates)}
@@ -69,7 +89,7 @@ def predict_endpoint(body: PredictRequest):
         raise HTTPException(400, str(e))
 
 
-@app.post("/recommend", dependencies=[Depends(auth)])
+@app.post("/recommend", dependencies=[Depends(auth), Depends(rate_limit)])
 def recommend_endpoint(body: RecommendRequest):
     """渡された最新の履歴で毎回学習し直してから推論する(on-demand)。
 

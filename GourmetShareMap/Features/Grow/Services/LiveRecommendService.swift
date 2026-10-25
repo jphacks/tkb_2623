@@ -64,7 +64,7 @@ struct LiveRecommendService: RecommendServing {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw RecommendServiceError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
-            let message = (try? JSONDecoder().decode(EdgeFunctionErrorBody.self, from: data))?.error
+            let message = (try? JSONDecoder().decode(EdgeFunctionErrorBody.self, from: data))?.message
                 ?? "レコメンドの取得に失敗しました (HTTP \(http.statusCode))"
             throw RecommendServiceError.server(message: message)
         }
@@ -93,8 +93,20 @@ private nonisolated struct AIModelStatusRow: Decodable {
     }
 }
 
+/// Edge Function由来のエラーは`error`キー、Cloud Run(FastAPI)から素通りした
+/// エラーは`detail`キーを使う(レート制限の429など)。両対応で拾う。
 private nonisolated struct EdgeFunctionErrorBody: Decodable {
-    let error: String
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case error, detail
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        message = try container.decodeIfPresent(String.self, forKey: .error)
+            ?? container.decodeIfPresent(String.self, forKey: .detail)
+    }
 }
 
 private nonisolated struct RecommendResponseBody: Decodable {
