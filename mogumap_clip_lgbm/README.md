@@ -4,7 +4,7 @@
 
 ## 推薦と学習の条件
 
-| 評価・代表写真が利用できる本人の店舗記録数 | 推薦 |
+| 評価・代表写真のメタ情報がある本人の店舗記録数 | 推薦 |
 |---|---|
 | 0〜5件 | Geminiの簡易推薦 |
 | 6件以上・公開済みモデルあり | LightGBMで本人の星評価を予測 |
@@ -12,7 +12,7 @@
 
 初回学習は6件から。その後は、最後に成功した学習に含まれない有効店舗が5件以上追加されるごとに、全履歴で再学習します。通常は6・11・16件ですが、初回が8件なら次回13件です。削除との相殺で追加を見落とさないよう、学習済み店舗ID集合で判定します。同じ店舗への再訪問や写真追加は追加店舗数に数えません。再学習中・失敗時は前回成功したモデルを使用します。
 
-iOSの育てる画面は登録0〜4件で推薦入力を表示せず、5件から利用できます。バックエンドAPIは0件からGemini推薦に対応しています。学習の起動やモデルの選択はサーバー側で行います。
+iOSの育成タブは登録0件から推薦入力を出すため、0〜5件のGemini推薦はアプリからそのまま使えます。学習操作はアプリには追加しません。
 
 ## データの流れ
 
@@ -26,7 +26,7 @@ flowchart TD
     Train --> GCS[GCS: 世代別モデル]
     GCS --> Publish[DB: 公開モデル世代・学習指標を更新]
     App -->|希望と現在地・JWT| Edge[Supabase ai-recommend]
-    Edge -->|本人の履歴・共有キー| API[Cloud Run Service: api.py]
+    Edge -->|画像なしの履歴メタ情報・共有キー| API[Cloud Run Service: api.py]
     API --> Places[Geminiで条件抽出 / Placesで実店舗検索]
     Places --> Route{有効件数と公開モデルで分岐}
     Route --> Simple[Gemini: メタ情報から候補を選択]
@@ -36,7 +36,9 @@ flowchart TD
     CLI[開発者向けtrain_cli.py] --> Train
 ```
 
-Edge FunctionはユーザーJWTを検証し、本人の `store` と代表写真を取得します。画像は `record-images` バケットから取得します。バックエンドはSupabaseへ登録された公開モデル世代を自分で確認し、アプリからモデル世代を指定させません。Cloud Run APIの `X-API-Key` 認証と、インスタンス単位のレート制限（既定20回／分）は維持しています。
+Edge FunctionはユーザーJWTを検証し、本人の `store` と関連する `image` のメタ情報を取得します。代表写真のID・本人の評価・店舗情報・解析済みの料理特徴だけをCloud Runへ送り、写真のダウンロード・Base64化・画像バイナリの送信は行いません。バックエンドはSupabaseへ登録された公開モデル世代を自分で確認し、アプリからモデル世代を指定させません。Cloud Run APIは `X-API-Key` 認証と、インスタンス単位のレート制限（既定20回／分）を使用します。
+
+バックエンドはまず履歴のメタ情報を検証します。0〜5件、または公開済みモデルがない場合は、Storageにも画像検証にもアクセスせずGeminiへ進みます。LightGBMを使う場合だけ、バックエンドが本人の履歴・写真をSupabaseから取得して画像を検証し、CLIPへ入力します。実際に利用できる画像が6件未満の場合や、画像取得・モデル利用に失敗した場合はGeminiへ切り替えます。
 
 ## iOSアプリからの呼び出し
 
@@ -60,10 +62,12 @@ Content-Type: application/json
 |---|---|---|
 | 写真の特徴抽出 | `sentence-transformers/clip-ViT-B-32`、正規化512次元画像埋め込み | 共有・凍結。追加学習なし |
 | 個人の好み予測 | LightGBM `LGBMRegressor` | 本人の1〜5の評価を教師にユーザー別で学習 |
-| 条件抽出・簡易推薦 | Vertex AI Gemini、`GEMINI_MODEL` で指定 | 追加学習なし。自由文・カテゴリ別評価の要約・候補情報から推論 |
+| 条件抽出・簡易推薦 | Vertex AI Gemini `gemini-3.5-flash-lite`（`GEMINI_MODEL` で指定） | 追加学習なし。自由文・カテゴリ別評価の要約・直近の料理の特徴・候補情報から推論 |
 | 実店舗検索 | Google Places API (New) Text Search | モデル学習なし |
 
-Geminiは実店舗検索の条件をJSONで抽出し、簡易推薦では検索結果の候補IDと推定評価だけを返します。サーバーが候補ID・重複・評価範囲を検証し、店名はPlacesの結果から復元します。Geminiへの履歴画像送信は行いません。簡易推薦ではCLIPも候補写真のダウンロードも行いません。
+推薦用モデルの既定値は `gemini-3.5-flash-lite` です。[モデル仕様](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-flash-lite)。環境変数 `GEMINI_MODEL` が設定されている場合は、その値を使用します。
+
+Geminiは実店舗検索の条件をJSONで抽出し、簡易推薦では検索結果の候補IDと推定評価だけを返します。サーバーが候補ID・重複・評価範囲を検証し、店名はPlacesの結果から復元します。Geminiへの履歴画像送信は行いません。代わりに簡易推薦では、`image.dish_features`（[analyze-dish](../supabase/DISH_ANALYSIS.md) の解析結果、`dish_features_status = 'done'` の写真のみ）の `features` を、新しい順に最大10店ぶん（各店の解析済み写真すべて）、その店の評価・カテゴリと組にして `rated_dishes` として渡します。簡易推薦ではCLIPも候補写真のダウンロードも行いません。
 
 Places検索は現在地を中心とする3,000mの `locationBias` を使用します。厳密な距離制限ではありません。候補は最大10件、返却は最大3件です。カテゴリは抽出したカテゴリを候補に共通で設定し、既訪問店舗の除外はしません。
 
@@ -97,12 +101,12 @@ n_jobs = 1
 
 評価は1件抜き交差検証のMAE（平均絶対誤差）です。15件を超える場合は評価対象だけ直近15件に絞り、学習には除外対象以外の全履歴を使います。対象日時より後の記録も学習側に入り得るため、厳密な将来予測の時系列評価ではありません。予測値は1〜5に収め、小数第2位に丸めて降順に返します。
 
-既存iOSの「好みの読み当て」は `round(max(0, 1 - MAE / 4) * 100)` で換算する表示であり、推薦成功確率ではありません。Gemini推薦では架空のMAEを保存しません。
+iOSの「好みの読み当て」は `round(max(0, 1 - MAE / 4) * 100)` で換算する表示であり、推薦成功確率ではありません。Gemini推薦では架空のMAEを保存しません。
 
 ## 履歴とモデルの保存
 
 - 代表写真は `image.created_at` 昇順、同日時は `image.id` 昇順の先頭1枚です。学習と推薦で揃えています。
-- 評価・カテゴリ・画像を検証し、重複する店舗IDを除外します。画像は最大5 MiB、読み込めない画像は有効件数から除外します。一時的なStorage通信障害は件数減少として扱わず、再試行／エラーにします。
+- 推薦のメタ情報は本人の評価・カテゴリ・数値範囲を検証し、店舗IDの重複を除外します。学習・ML推論ではさらに画像を検証し、最大5 MiBを超える画像や読み込めない画像を除外します。学習時の一時的なStorage通信障害はジョブの再試行対象とし、推薦時の画像取得障害はGeminiへの切り替え対象とします。
 - 欠損する店舗情報は価格帯2、公開評価3.5、レビュー数50、カテゴリ「その他」で補完します。Places候補のレビュー数既定値は0です。
 - 学習対象は最大2,000件。DB履歴はページ取得し、画像取得は最大8並列です。
 - 画像の検証結果は内容ハッシュでプロセス内にキャッシュします。CLIP埋め込みの永続キャッシュはありません。
@@ -124,7 +128,7 @@ mogumap_clip_lgbm/venv/bin/python mogumap_clip_lgbm/train_cli.py \
   --records mogumap_clip_lgbm/data/train.json --user-id demo_user_0
 ```
 
-`generate_demo.py` は既存のデモデータを再生成するため、保持したいデモファイルがある場合は先に退避してください。デモデータのカテゴリには上記の13分類を使用します。初回CLIP実行では重み取得が必要です。Linuxでは `libgomp1` などのOpenMPランタイムも必要です。
+`generate_demo.py` は既存のデモデータを再生成するため、保持したいデモファイルがある場合は先に退避してください。デモデータには上記13分類のカテゴリを使用します。初回CLIP実行では重み取得が必要です。Linuxでは `libgomp1` などのOpenMPランタイムも必要です。
 
 ルートから `from ml import ...` を実行すると別パッケージを読むことがあるため、上記のようにスクリプトのパスを指定してください。`ModuleNotFoundError: joblib` などの場合は同じPythonで `-m pip install -r ...` を実行します。
 
@@ -165,7 +169,9 @@ mogumap_clip_lgbm/venv/bin/python -m uvicorn api:app \
 
 `/health` 以外は `X-API-Key` が必須です。バックエンドはユーザーJWTを直接検証しないため、ユーザー向けアクセスは認証済みEdge Function経由にします。
 
-学習履歴の必須情報は `user_id`, `place_id`, `image_id`, `category`, `price_level`, `google_rating`, `review_count`, `rating`, `rated_at` と `image_base64` または `image_path`。画像パスはこのディレクトリを基準とし、Base64があれば優先します。候補には本人の評価・ユーザーID・日時は不要です。
+`/recommend` の `history` は画像なしの履歴メタ情報を受け付けます。各行は `user_id`, `place_id`, `image_id`, `category`, `rating`, `rated_at` と、価格帯・公開評価・レビュー件数・任意の `dish_features` を持ちます。入力に `image_base64` や `image_path` があってもGeminiへは渡しません。
+
+`/train`・`/predict` の学習・推論用履歴の必須情報は `user_id`, `place_id`, `image_id`, `category`, `price_level`, `google_rating`, `review_count`, `rating`, `rated_at` と `image_base64` または `image_path`。画像パスはこのディレクトリを基準とし、Base64があれば優先します。候補には本人の評価・ユーザーID・日時は不要です。
 
 `/recommend` の応答例:
 
@@ -198,6 +204,7 @@ export MODEL_BUCKET='<既存モデルバケット名>'
 export SUPABASE_URL='https://<project>.supabase.co'
 export API_SERVICE='<既存Cloud Runサービス名>'
 export IMAGE_TAG='<一意のリリースタグ>'
+export GEMINI_MODEL='gemini-3.5-flash-lite'
 
 bash mogumap_clip_lgbm/deploy/setup_gcp.sh
 bash mogumap_clip_lgbm/deploy/deploy_gcp.sh
@@ -226,7 +233,7 @@ bash mogumap_clip_lgbm/deploy/enable_schedule.sh
 | `MODEL_BUCKET` | GCSバケット名。未設定ならローカル保存 |
 | `CLIP_DEVICE` | 既定 `cpu` |
 | `GOOGLE_CLOUD_PROJECT` | Vertex AIのプロジェクト |
-| `VERTEX_LOCATION`, `GEMINI_MODEL` | 既定 `global`, `gemini-3.8-flash`。利用可能なモデルに合わせて変更 |
+| `VERTEX_LOCATION`, `GEMINI_MODEL` | 既定 `global`, `gemini-3.5-flash-lite`。利用可能なモデルに合わせて変更 |
 | `PLACES_API_KEY` | Places API (New) |
 | `RATE_LIMIT_PER_MINUTE` | インスタンス単位のAPI制限。既定20 |
 | `TRAIN_USER_ID` | 手動検証JobでCLI引数の代わりに使うユーザーUUID |
@@ -241,7 +248,11 @@ GCPではサービスアカウントのADCを使用します。DockerfileはCLIP
 
 現在のML推論は候補だけでなく履歴画像も再計算します。履歴 `N`、候補 `K`、画像特徴抽出 `E` とすると、概ね `T_predict = モデル取得 + E(N+K) + 特徴量作成 + LightGBM予測`。例えば履歴30件＋候補10件は40枚が対象です。Gemini経路はCLIP処理を行いません。
 
-学習は `E(N)` に加え、最終学習1回と交差検証最大15回を行います。各学習では全有効履歴を使用するため、追加5件だけでなく学習対象の全履歴サイズが処理時間を決めます。モデルは最大150本・各15葉以下の決定木とメタ情報で、ユーザー別容量予算として数十KiB〜1MiBを仮置きできます。CLIP本体・画像・旧世代は含めません。CLIの `model_size_bytes` と各時間で実データの計測を更新してください。
+学習は `E(N)` に加え、最終学習1回と交差検証最大15回。学習のたびに全履歴を使用するため、追加5件だけでなく全履歴のサイズが処理時間を決めます。モデルは最大150本・各15葉以下の決定木とメタ情報で、ユーザー別容量予算として数十KiB〜1MiBを仮置きできます。CLIP本体・画像・旧世代は含めません。CLIの `model_size_bytes` と各時間で実データの計測を更新してください。
+
+### 推薦の処理時間ログ
+
+推薦APIは `recommend mode=... total=... stages=...` を記録します。`stages` は `metadata`（メタ情報検証）、`model_status`、`conditions`（Gemini条件抽出）、`places`、`gemini_rank`（Gemini推薦）です。ML経路ではさらに `model_load`、`history_images`、`ml` を記録します。実行しなかった段階は含まれません。`total` はメタ情報検証から応答生成までで、iOSの現在地取得、Edge FunctionのDB取得、Cloud Runの起動待ちは含みません。
 
 ## テスト
 

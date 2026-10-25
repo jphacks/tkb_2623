@@ -99,11 +99,13 @@ class ApiTests(unittest.TestCase):
     @patch('api.predict_for_user', return_value=[])
     def test_six_uses_published_model(self, predict, photos, has, gemini, search, extract, repo):
         repo.return_value.status.return_value = status()
+        repo.return_value.history.return_value = records()
         response = self.request(6)
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['mode'], 'lightgbm')
         self.assertEqual(predict.call_args.kwargs['version'], 'generation-1')
         gemini.assert_not_called()
+        repo.return_value.history.assert_called_once_with("demo")
 
     @patch('api.Repository')
     @patch('api.extract_conditions', return_value={})
@@ -115,6 +117,7 @@ class ApiTests(unittest.TestCase):
         response = self.request(6)
         self.assertEqual(response.json()['mode'], 'gemini')
         repo.return_value.repair.assert_called_once_with('demo')
+        repo.return_value.history.assert_not_called()
 
     @patch('api.Repository')
     @patch('api.extract_conditions', return_value={})
@@ -166,6 +169,26 @@ class GeminiTests(unittest.TestCase):
         ]}):
             with self.assertRaises(ValueError):
                 recommend.gemini_recommend('a', [], [candidate])
+
+    def test_dish_features_of_recent_stores_are_sent(self):
+        history = records(12)
+        for i, row in enumerate(history):
+            row['dish_features'] = [{'caption': f'dish{i}-a'}, {'caption': f'dish{i}-b'}]
+        history[11]['dish_features'] = []  # 未解析の店は飛ばして次の店を使う
+        history[10]['dish_features'] = ['broken', {'caption': 'dish10-a'}]
+        candidate = {**records()[0], 'name': 'real-name'}
+        with patch('recommend.generate_json', return_value={'predictions': []}) as generate:
+            recommend.gemini_recommend('a', history, [candidate])
+        payload = json.loads(generate.call_args.args[0].split('\n', 1)[1])
+        dishes = payload['rated_dishes']
+        self.assertEqual(len(dishes), recommend.MAX_DISH_STORES)
+        self.assertEqual(dishes[0]['dishes'], [{'caption': 'dish10-a'}])
+        self.assertEqual(dishes[1]['dishes'], [{'caption': 'dish9-a'}, {'caption': 'dish9-b'}])
+        self.assertEqual(dishes[1]['rating'], history[9]['rating'])
+        self.assertEqual(dishes[-1]['dishes'][0]['caption'], 'dish1-a')
+        with patch('recommend.generate_json', return_value={'predictions': []}) as generate:
+            recommend.gemini_recommend('a', records(), [candidate])
+        self.assertEqual(json.loads(generate.call_args.args[0].split('\n', 1)[1])['rated_dishes'], [])
 
 
 class WorkerTests(unittest.TestCase):

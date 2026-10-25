@@ -10,9 +10,13 @@ struct ProfileView: View {
     @StateObject private var viewModel = ProfileViewModel()
     @State private var isEditingProfile = false
     @State private var isShowingBlockedUsers = false
+    @State private var isShowingAllRecords = false
 
     private let backgroundColor = Color(red: 0.984, green: 0.968, blue: 0.937)
     private let accentOrange = Color(red: 0.76, green: 0.35, blue: 0.22)
+    /// 記録グリッドの初期表示件数。これを超える分は「もっと見る」で展開する
+    /// （記録が増えるほどグリッドが伸び、下のブロック中/ログアウトボタンが遠くなるのを防ぐ）。
+    private let initialRecordsLimit = 30
 
     var body: some View {
         // フレンド一覧・フレンド追加へ push で遷移する。
@@ -44,9 +48,9 @@ struct ProfileView: View {
 
                         statsRow
 
-                        recentRecordsSection
-
                         friendListButton
+
+                        recordsSection
 
                         blockedUsersButton
                     }
@@ -183,17 +187,49 @@ struct ProfileView: View {
         .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private var recentRecordsSection: some View {
+    private var recordsGridColumns: [GridItem] {
+        [GridItem(.flexible(), spacing: 3), GridItem(.flexible(), spacing: 3), GridItem(.flexible(), spacing: 3)]
+    }
+
+    /// 「もっと見る」が押されるまでは先頭`initialRecordsLimit`件のみ表示する。
+    /// `viewModel.records`は既に全件取得済みのため、展開時に追加の通信は発生しない。
+    private var visibleRecords: [ProfileRecord] {
+        isShowingAllRecords ? viewModel.records : Array(viewModel.records.prefix(initialRecordsLimit))
+    }
+
+    private var recordsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("最近の記録")
+            Text("登録した記録")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.black)
 
-            VStack(spacing: 10) {
-                ForEach(viewModel.recentRecords) { record in
-                    RecentRecordRow(record: record)
+            if viewModel.records.isEmpty {
+                Text("まだ記録がありません")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.black.opacity(0.5))
+            } else {
+                LazyVGrid(columns: recordsGridColumns, spacing: 3) {
+                    ForEach(visibleRecords) { record in
+                        RecordPhotoTile(record: record)
+                    }
+                }
+
+                if !isShowingAllRecords && viewModel.records.count > initialRecordsLimit {
+                    showMoreRecordsButton
                 }
             }
+        }
+    }
+
+    private var showMoreRecordsButton: some View {
+        Button {
+            isShowingAllRecords = true
+        } label: {
+            Text("もっと見る(残り\(viewModel.records.count - initialRecordsLimit)件)")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(accentOrange)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
         }
     }
 

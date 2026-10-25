@@ -10,7 +10,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // 0〜5件はGemini、6件以上は学習済みモデル。未学習時はGeminiを継続。
-const RECORD_IMAGES_BUCKET = "record-images";
 
 // 新カラム(store.price_level / google_rating / review_count)がNULLの既存データ向けの
 // 補完値。要件定義 6章参照。
@@ -59,7 +58,7 @@ Deno.serve(async (req: Request) => {
   const stores: StoreRow[] = [];
   for (let offset = 0; offset <= 2000; offset += 500) {
     const { data, error } = await supabase.from("store")
-      .select("id, category, reputation, price_level, google_rating, review_count, created_at, image(id, image, created_at)")
+      .select("id, category, reputation, price_level, google_rating, review_count, created_at, image(id, image, created_at, dish_features, dish_features_status)")
       .eq("user_id", userId).not("reputation", "is", null)
       .order("id").range(offset, offset + 499);
     if (error) return jsonError("店舗履歴を取得できませんでした", 502);
@@ -76,34 +75,32 @@ Deno.serve(async (req: Request) => {
     google_rating: number | null;
     review_count: number | null;
     created_at: string;
-    image: { id: string; image: string; created_at: string }[] | null;
+    image: {
+      id: string;
+      image: string;
+      created_at: string;
+      dish_features: { features?: Record<string, unknown> } | null;
+      dish_features_status: string | null;
+    }[] | null;
   };
 
-  // Representative photo order matches repository.py. Bound download concurrency.
-  const storesWithPhotos = stores.filter((store) => store.image?.length);
-  const historyResults: (Record<string, unknown> | null)[] = [];
-  for (let start = 0; start < storesWithPhotos.length; start += 8) {
-    const batch = await Promise.all(storesWithPhotos.slice(start, start + 8).map(async (store) => {
-      const firstImage = [...store.image!].sort((a, b) =>
-        a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))[0];
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from(RECORD_IMAGES_BUCKET).download(firstImage.image);
-      // A temporary Storage failure must not lower the apparent store count.
-      if (downloadError || !fileData) throw new Error("history download failed");
-      if (fileData.size > 5 * 1024 * 1024) return null;
-      const bytes = new Uint8Array(await fileData.arrayBuffer());
-      return {
-        place_id: store.id, image_id: firstImage.id, image_base64: encodeBase64(bytes),
-        category: store.category ?? "その他", price_level: store.price_level ?? DEFAULTS.price_level,
-        google_rating: store.google_rating ?? DEFAULTS.google_rating,
-        review_count: store.review_count ?? DEFAULTS.review_count,
-        user_id: userId, rating: store.reputation, rated_at: store.created_at,
-      };
-    })).catch(() => null);
-    if (!batch) return jsonError("写真を取得できませんでした。しばらくしてから再度お試しください", 503);
-    historyResults.push(...batch);
-  }
-  const history = historyResults.filter((h): h is Record<string, unknown> => h !== null);
+  // Text-only transport for every recommendation request. The backend downloads
+  // history photos from Storage only after it selects a published ML model.
+  // Gemini requests never download, encode, or transfer photo bytes.
+  const history = stores.filter((store) => store.image?.length).map((store) => {
+    const photos = [...store.image!].sort((a, b) =>
+      a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+    return {
+      place_id: store.id, image_id: photos[0].id,
+      category: store.category ?? "その他", price_level: store.price_level ?? DEFAULTS.price_level,
+      google_rating: store.google_rating ?? DEFAULTS.google_rating,
+      review_count: store.review_count ?? DEFAULTS.review_count,
+      user_id: userId, rating: store.reputation, rated_at: store.created_at,
+      dish_features: photos
+        .filter((photo) => photo.dish_features_status === "done" && photo.dish_features?.features)
+        .map((photo) => photo.dish_features!.features),
+    };
+  });
 
   const aiBackendUrl = Deno.env.get("AI_BACKEND_URL");
   const aiBackendApiKey = Deno.env.get("AI_BACKEND_API_KEY");
@@ -138,15 +135,6 @@ Deno.serve(async (req: Request) => {
     headers: { "Content-Type": "application/json" },
   });
 });
-
-function encodeBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-}
 
 function jsonError(error: string, status: number): Response {
   return new Response(JSON.stringify({ error }), { status, headers: { "Content-Type": "application/json" } });

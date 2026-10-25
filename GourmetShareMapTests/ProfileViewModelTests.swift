@@ -261,7 +261,22 @@ struct ProfileViewModelTests {
         #expect(fakeCovers.lastStoreIDs == [withPhoto.id, withoutPhoto.id])
     }
 
-    @Test func loadRequestsCoverImagesOnlyForRecentRecords() async throws {
+    @Test func loadPopulatesRecordsWithAllStoresForOwnProfile() async throws {
+        // 自分のプロフィールは一覧グリッド表示のため、5件に制限せず全件`records`に反映する。
+        let stores = (1...7).map { makeStore(name: "店\($0)") }
+        let viewModel = ProfileViewModel(
+            profileDataSource: FakeProfileDataSource(.success(makeProfile())),
+            storesDataSource: FakeStoresDataSource(.success(stores)),
+            coverImagesDataSource: FakeCoverImagesDataSource(),
+            friendsDataSource: FakeFriendsDataSource()
+        )
+        await viewModel.load()
+
+        #expect(viewModel.records.count == 7)
+        #expect(viewModel.records.map(\.storeName) == stores.map(\.name))
+    }
+
+    @Test func loadRequestsCoverImagesForAllRecordsOnOwnProfile() async throws {
         let stores = (1...7).map { makeStore(name: "店\($0)") }
         let fakeCovers = FakeCoverImagesDataSource()
         let viewModel = ProfileViewModel(
@@ -272,7 +287,23 @@ struct ProfileViewModelTests {
         )
         await viewModel.load()
 
+        #expect(fakeCovers.lastStoreIDs == stores.map(\.id))
+    }
+
+    @Test func loadRequestsCoverImagesOnlyForFirstFiveOnFriendProfile() async throws {
+        let stores = (1...7).map { makeStore(name: "店\($0)") }
+        let fakeCovers = FakeCoverImagesDataSource()
+        let viewModel = ProfileViewModel(
+            target: .friend(userID: UUID()),
+            profileDataSource: FakeProfileDataSource(.success(makeProfile())),
+            storesDataSource: FakeStoresDataSource(.success(stores)),
+            coverImagesDataSource: fakeCovers,
+            friendsDataSource: FakeFriendsDataSource()
+        )
+        await viewModel.load()
+
         #expect(fakeCovers.lastStoreIDs == stores.prefix(5).map(\.id))
+        #expect(viewModel.records.count == 5)
     }
 
     @Test func loadFallsBackToNilCoverImageURLsWhenFetchFails() async throws {

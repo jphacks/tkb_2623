@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct MainTabView: View {
     enum TabItem: Hashable {
@@ -16,6 +17,17 @@ struct MainTabView: View {
     @State private var isPresentingFriendAdd = false
     @Environment(\.scenePhase) private var scenePhase
     private let accentOrange = Color(red: 0.76, green: 0.35, blue: 0.22)
+
+    init() {
+        // タブラベルの文字数が「登録」(2文字)〜「タイムライン」「プロフィール」(5文字)まで
+        // バラバラで、フローティングタブバーは各項目の幅がラベル文字幅に応じて伸縮するため、
+        // 既定のフォントサイズのままだとアイコンの横位置が不揃いに見える。
+        // ラベルのフォントを少し小さく統一し、文字幅の差を縮めて横位置を揃える。
+        let tabBarItemAppearance = UITabBarItem.appearance()
+        let labelFont = UIFont.systemFont(ofSize: 10, weight: .medium)
+        tabBarItemAppearance.setTitleTextAttributes([.font: labelFont], for: .normal)
+        tabBarItemAppearance.setTitleTextAttributes([.font: labelFont], for: .selected)
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {

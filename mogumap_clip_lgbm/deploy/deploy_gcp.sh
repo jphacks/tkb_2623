@@ -17,7 +17,7 @@ set -euo pipefail
 : "${SUPABASE_KEY_SECRET:=supabase-service-role-key}"
 : "${AI_KEY_SECRET:=ai-backend-api-key}"
 : "${PLACES_KEY_SECRET:=places-api-key}"
-: "${GEMINI_MODEL:=gemini-3.8-flash}"
+: "${GEMINI_MODEL:=gemini-3.5-flash-lite}"
 : "${VERTEX_LOCATION:=global}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 image="$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REPOSITORY/backend:$IMAGE_TAG"
