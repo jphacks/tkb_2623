@@ -1,59 +1,42 @@
 """MoguMap AIバックエンド: 凍結CLIP特徴量 + ユーザーごとのLightGBM回帰。
 
 1ユーザー1モデル(Notion仕様通り)。CLIPは全ユーザー共有・凍結の特徴抽出器。
-1人あたりのデータが5〜数十件と少ないため、LightGBMのハイパーパラメータはデータ量に応じて
+1人あたりのデータが6〜数十件と少ないため、LightGBMのハイパーパラメータはデータ量に応じて
 動的に絞り、評価は5-FoldではなくLOOCV(leave-one-out)を使う。
 """
 from __future__ import annotations
 
-import base64
 import io
 import os
+import time
+from uuid import uuid4
 from functools import lru_cache
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 from PIL import Image
-from sentence_transformers import SentenceTransformer
 from lightgbm import LGBMRegressor
 
-from storage import load_artifact, save_artifact
+from storage import load_artifact, save_artifact, serialized_size
 
 ROOT = Path(__file__).resolve().parent
 CLIP_ID = "sentence-transformers/clip-ViT-B-32"
 
-# GourmetShareMap/Services/Places/PlaceCategoryClassifier.swift と同じ13分類。
-CATEGORIES = [
-    "和食", "ラーメン・麺類", "焼肉・肉料理", "中華", "カレー", "アジア・エスニック",
-    "洋食・西洋料理", "ファストフード・食堂", "カフェ・喫茶", "パン", "スイーツ",
-    "居酒屋・バー", "その他",
-]
+from policy import CATEGORIES, MIN_TRAIN_RECORDS, POLICY_VERSION
+from history import image_bytes
 
-MIN_RECORDS = 5  # 育成タブのLv.2(レコメンド解禁)の閾値と合わせる
+MIN_RECORDS = MIN_TRAIN_RECORDS  # compatibility for direct callers
 
 
 @lru_cache(maxsize=1)
-def clip_model() -> SentenceTransformer:
+def clip_model():
+    from sentence_transformers import SentenceTransformer
     return SentenceTransformer(CLIP_ID, device=os.getenv("CLIP_DEVICE", "cpu"))
 
 
 def decode_image(record: dict) -> Image.Image:
-    if record.get("image_base64"):
-        raw = record["image_base64"].split(",", 1)[-1]
-        data = base64.b64decode(raw, validate=True)
-        if len(data) > 5 * 1024 * 1024:
-            raise ValueError("image exceeds 5 MB")
-        with Image.open(io.BytesIO(data)) as im:
-            return im.convert("RGB")
-    path = record.get("image_path")
-    if not path:
-        raise ValueError("image_path or image_base64 required")
-    file = Path(path)
-    if not file.is_absolute():
-        file = ROOT / file
-    with Image.open(file) as im:
+    with Image.open(io.BytesIO(image_bytes(record))) as im:
         return im.convert("RGB")
 
 
@@ -128,7 +111,7 @@ def validate_record(r: dict, rated: bool) -> None:
 
 
 def _fit(frame: pd.DataFrame, y: list[float]) -> LGBMRegressor:
-    # 1ユーザーあたり5〜数十件という少データ前提のため、木の複雑さをデータ量に合わせて絞る。
+    # 1ユーザーあたり6〜数十件という少データ前提のため、木の複雑さをデータ量に合わせて絞る。
     n = len(y)
     model = LGBMRegressor(
         n_estimators=min(150, max(20, n * 6)),
@@ -179,7 +162,10 @@ def _loocv_mean_abs_error(user_records: list[dict], embeddings: dict) -> float |
     return float(np.mean(errors))
 
 
-def train_user(user_id: str, records: list[dict]) -> dict:
+def train_user(user_id: str, records: list[dict], *, version: str | None = None,
+               output_dir: Path | None = None, storage_prefix: str = "models") -> dict:
+    started = time.perf_counter()
+    version = version or uuid4().hex
     if len(records) < MIN_RECORDS:
         raise ValueError(f"need >={MIN_RECORDS} rating records for this user (has {len(records)})")
     for r in records:
@@ -187,14 +173,22 @@ def train_user(user_id: str, records: list[dict]) -> dict:
         if str(r["user_id"]) != str(user_id):
             raise ValueError("records must all belong to user_id")
     user_records = sorted(records, key=lambda x: x["rated_at"])
+    clip_started = time.perf_counter()
     embeddings = embed_records(user_records)
+    clip_seconds = time.perf_counter() - clip_started
+    fit_started = time.perf_counter()
     frame, y = _expanding_features(user_records, embeddings)
     model = _fit(frame, y)
     mean_abs_error = _loocv_mean_abs_error(user_records, embeddings)
-    bundle = {"model": model, "columns": list(frame.columns), "clip_id": CLIP_ID}
-    model_path = save_artifact(user_id, bundle)
+    fit_seconds = time.perf_counter() - fit_started
+    bundle = {"model": model, "columns": list(frame.columns), "clip_id": CLIP_ID,
+              "training_policy": POLICY_VERSION, "trained_records": len(y)}
+    model_path = save_artifact(user_id, bundle, version, output_dir, prefix=storage_prefix)
+    model_size = serialized_size(bundle)
     return {
-        "user_id": user_id,
+        "user_id": user_id, "model_version": version, "training_policy": POLICY_VERSION,
+        "clip_seconds": round(clip_seconds, 3), "fit_eval_seconds": round(fit_seconds, 3),
+        "total_seconds": round(time.perf_counter() - started, 3), "model_size_bytes": model_size,
         "trained_records": len(y),
         "feature_count": len(frame.columns),
         "mean_abs_error": mean_abs_error,
@@ -202,14 +196,18 @@ def train_user(user_id: str, records: list[dict]) -> dict:
     }
 
 
-def has_model(user_id: str) -> bool:
-    return load_artifact(user_id) is not None
+def has_model(user_id: str, version: str | None = None) -> bool:
+    bundle = load_artifact(user_id, version)
+    return bool(bundle and bundle.get("training_policy") == POLICY_VERSION)
 
 
-def predict_for_user(user_id: str, history: list[dict], candidates: list[dict]) -> list[dict]:
-    bundle = load_artifact(user_id)
+def predict_for_user(user_id: str, history: list[dict], candidates: list[dict], *,
+                     version: str | None = None, output_dir: Path | None = None) -> list[dict]:
+    bundle = load_artifact(user_id, version, output_dir)
     if bundle is None:
         raise FileNotFoundError(f"No model for user {user_id}: call /train first")
+    if bundle.get("training_policy") != POLICY_VERSION or bundle.get("clip_id") != CLIP_ID:
+        raise ValueError("incompatible model generation")
     if not candidates:
         return []
     for r in history:

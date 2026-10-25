@@ -3,7 +3,12 @@
 `supabase/functions/ai-recommend/` は、iOSの「AIを育てる」タブからのレコメンド要求を
 Cloud Run上のAIバックエンド(`mogumap_clip_lgbm/`)へ中継するEdge Function。
 APIキーをアプリに埋め込まないため、iOSはCloud Runを直接呼ばずこのEdge Function経由で呼ぶ。
-詳細は [mogumap_clip_lgbm/REQUIREMENTS.md](../mogumap_clip_lgbm/REQUIREMENTS.md) を参照。
+現行仕様・GCP自動実行手順は [AIバックエンドREADME](../mogumap_clip_lgbm/README.md) を参照。
+0〜5件はGemini、6件以上は公開済みLightGBM（未準備ならGemini）を使用します。
+推薦中に学習や統計保存は行いません。学習は6件で開始し、その後は新規5件ごとに
+Cloud Run Jobが実行し、`ai_model_status` をサーバー権限で更新します。
+追加migrationは `migrations/20261025120000_ai_background_training.sql`、
+一時DBの検証は `bash supabase/tests/check_ai_training_db.sh` です。
 
 デプロイと環境変数設定:
 
@@ -291,6 +296,53 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/seed_store.sql
 - Swift側（`fetchVisibleStores()` / `fetchImages(storeID:)`）はマップ画面と合わせて
   シミュレータ向けビルドが成功しています。
 
+## ブロック機能
+
+```swift
+try await BlockRepository().block(userID: targetUserID)
+try await BlockRepository().unblock(userID: targetUserID)
+let blocked = try await BlockRepository().fetchBlockedUsers() // ブロックした日時の新しい順
+```
+
+- `migrations/20261025000000_block_user.sql`で`blocked_user`テーブルと`block_user()` RPCを追加しました。
+  ブロックは`blocker_id`→`blocked_id`の非対称な行として保存しますが、効果は双方向です
+  （お互いのstore/image/userが見えなくなり、どちらからも再フォローできなくなります）。
+- `block()`は`block_user()` RPCを呼びます。自分の行しか削除できない既存のfriend RLSでは
+  相手側のフォロー行を消せないため、RPC内のSECURITY DEFINERで登録・双方向のフォロー解除を
+  アトミックに行います。二重に呼んでも安全です（`on conflict do nothing`）。
+- `unblock()`は`blocked_user`から自分の行を直接DELETEするだけです（RLSの「自分の行」削除で
+  十分なため、こちらはRPC不要）。解除後は再フォローできます。
+- ブロック中ユーザー一覧（プロフィール画面）に相手の名前を表示するため、`user`テーブルに
+  「自分がブロックした相手の行は参照可」のポリシーを追加しています。
+- `store`/`image`のSELECT RLSにもブロックチェックを直接追加しています（friendの行は
+  block_user()で削除されますが、念のための二重の防御です）。ブロックされた側から
+  「相手が自分をブロックしているか」を判定する必要があるため、blocked_userのRLS
+  （自分がブロックした行のみ参照可）を経由しない`is_blocked_either_way()`
+  （SECURITY DEFINER）を用意し、各ポリシーから共通で呼び出しています。
+- 入口はタイムラインの投稿（他ユーザーの投稿を長押し→確認ダイアログ）です。通報(Report)機能は
+  対象外。
+
+### テスト
+
+```sh
+bash supabase/tests/check_block_user_local.sh
+```
+
+Dockerが必要です。一時PostgreSQL 17に全マイグレーションを適用し、
+[`tests/block_user.sql`](tests/block_user.sql)でRLS・RPCを検証します（終了時に一時DBを削除）。
+ブロックで双方向のフォロー解除・再フォロー拒否・store参照の双方向非表示・解除後の再フォロー可、
+二重ブロックでも行が増えないことを確認しています。
+
+Swift側は`GourmetShareMapTests`の`BlockRepositoryTests`（通信モック）・
+`TimelineViewModelTests`・`BlockedUsersViewModelTests`（ブロック関連のテストケース）で確認できます。
+
+### このタスクの検証結果
+
+- ローカルのPostgreSQL 17（`check_block_user_local.sh`相当の手順）で全マイグレーションを適用し、
+  `tests/block_user.sql`のRLS・RPC検証が成功しました。
+- Swift側の通信モックテスト・ViewModelテストが成功し、iOSシミュレータ向けビルドも成功しています。
+- 実際のSupabaseプロジェクトへの適用、Xcodeシミュレータでの手動確認は未実行です。
+
 ## フレンド申請・承認（user_name 検索）
 
 ### 手動で適用する migration
@@ -312,3 +364,10 @@ bash supabase/tests/check_friend_db.sh
 一時PostgreSQL 17に `migrations/` を順に適用し（Auth・Storageは最小構成のスタブ）、
 `tests/friend_user_name.sql`・`tests/friend_request.sql`・`tests/friend_search.sql` を実行します。
 既存データの補完は、user_name 必須化の前に `tests/friend_legacy_seed.sql` を投入して確認します。
+
+## 料理写真の特徴抽出（Gemini）
+
+記録写真を追加すると、Database Webhook 経由で Edge Function `analyze-dish` が Gemini で料理の特徴を抽出し、
+`image.dish_features` に保存します。設計・設定手順・動作確認の方法は [DISH_ANALYSIS.md](DISH_ANALYSIS.md) を参照してください。
+
+手動で適用する migration: `migrations/20261025020000_image_dish_features.sql`（image に `dish_features` / `dish_features_status` を追加）

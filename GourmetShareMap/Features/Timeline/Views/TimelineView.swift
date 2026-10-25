@@ -26,6 +26,17 @@ struct TimelineView: View {
         .background(.appBackground)
         // 表示時と、自分の記録を登録・更新したあとに取り直す。
         .task(id: recordStore.records) { await viewModel.load() }
+        .alert(
+            "ブロックに失敗しました",
+            isPresented: Binding(
+                get: { viewModel.blockErrorMessage != nil },
+                set: { isPresented in if !isPresented { viewModel.blockErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.blockErrorMessage ?? "")
+        }
         .sheet(item: $commentPost) { post in
             CommentSheetView(storeID: post.id, storeName: post.storeName)
         }
@@ -105,6 +116,7 @@ struct TimelineView: View {
                         TimelinePostCard(
                             post: post,
                             timeText: viewModel.timeText(for: post),
+                            onBlock: post.isMine ? nil : { Task { await viewModel.block(post) } },
                             onTapUser: { selectedProfilePost = post },
                             onTapLike: { Task { await viewModel.toggleLike(for: post) } }
                         ) {

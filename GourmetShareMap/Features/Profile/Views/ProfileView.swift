@@ -9,6 +9,7 @@ struct ProfileView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @StateObject private var viewModel = ProfileViewModel()
     @State private var isEditingProfile = false
+    @State private var isShowingBlockedUsers = false
 
     private let backgroundColor = Color(red: 0.984, green: 0.968, blue: 0.937)
     private let accentOrange = Color(red: 0.76, green: 0.35, blue: 0.22)
@@ -46,6 +47,8 @@ struct ProfileView: View {
                         recentRecordsSection
 
                         friendListButton
+
+                        blockedUsersButton
                     }
 
                     logoutButton
@@ -64,6 +67,9 @@ struct ProfileView: View {
             Task { await viewModel.load() }
         }) {
             ProfileEditView()
+        }
+        .sheet(isPresented: $isShowingBlockedUsers) {
+            BlockedUsersView()
         }
     }
 
@@ -201,6 +207,22 @@ struct ProfileView: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(accentOrange, lineWidth: 1.5)
+                }
+        }
+    }
+
+    private var blockedUsersButton: some View {
+        Button {
+            isShowingBlockedUsers = true
+        } label: {
+            Text("ブロック中のユーザー")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.black.opacity(0.6))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(.black.opacity(0.15), lineWidth: 1.5)
                 }
         }
     }

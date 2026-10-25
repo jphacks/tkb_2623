@@ -21,7 +21,12 @@ struct LoginView: View {
                 Spacer(minLength: 20)
 
                 VStack(spacing: 20) {
-                    GourmetMascotView()
+                    Image(.loginMascot)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 160, height: 160)
+                        .clipShape(RoundedRectangle(cornerRadius: 36, style: .continuous))
+                        .shadow(color: .black.opacity(0.12), radius: 14, y: 8)
 
                     VStack(spacing: 6) {
                         Text("あなたのご飯を")
