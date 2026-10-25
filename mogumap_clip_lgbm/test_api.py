@@ -19,9 +19,10 @@ def post(path, obj):
 rows = json.loads((root / 'data/train.json').read_text(encoding='utf-8'))
 user_id = 'demo_user_0'
 history = [r for r in rows if r['user_id'] == user_id]
-print('Training:', post('/train', {'user_id': user_id, 'records': history}))
+stats = post('/train', {'user_id': user_id, 'records': history})
+print('Training:', stats)
 
 places = json.loads((root / 'data/places.json').read_text(encoding='utf-8'))
 used = {r['place_id'] for r in history}
 candidates = [p for p in places if p['place_id'] not in used][:5]
-print('Predictions:', post('/predict', {'user_id': user_id, 'history': history, 'candidates': candidates}))
+print('Predictions:', post('/predict', {'user_id': user_id, 'history': history, 'candidates': candidates, 'model_version': stats['model_version']}))

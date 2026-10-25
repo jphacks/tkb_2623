@@ -9,8 +9,7 @@
 //   AI_BACKEND_API_KEY  Cloud Run側の AI_BACKEND_API_KEY と同じ共有シークレット
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-// mogumap_clip_lgbm/ml.py の MIN_RECORDS と合わせる(育成タブLv.2の閾値)。
-const MIN_RECORDS = 5;
+// 0〜5件はGemini、6件以上は学習済みモデル。未学習時はGeminiを継続。
 const RECORD_IMAGES_BUCKET = "record-images";
 
 // 新カラム(store.price_level / google_rating / review_count)がNULLの既存データ向けの
@@ -45,23 +44,28 @@ Deno.serve(async (req: Request) => {
   } catch {
     return new Response(JSON.stringify({ error: "invalid JSON body" }), { status: 400 });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return jsonError("invalid JSON body", 400);
   const { free_text, lat, lng } = body;
-  if (!free_text || typeof lat !== "number" || typeof lng !== "number") {
+  if (typeof free_text !== "string" || !free_text.trim() || free_text.length > 500
+      || typeof lat !== "number" || !Number.isFinite(lat) || Math.abs(lat) > 90
+      || typeof lng !== "number" || !Number.isFinite(lng) || Math.abs(lng) > 180) {
     return new Response(
       JSON.stringify({ error: "free_text, lat, lng are required" }),
       { status: 400 },
     );
   }
 
-  // 評価済み(reputationが入っている)店舗を、紐づく画像(先頭1枚)と一緒に取得する。
-  const { data: stores, error: storesError } = await supabase
-    .from("store")
-    .select("id, category, reputation, price_level, google_rating, review_count, created_at, image(id, image)")
-    .eq("user_id", userId)
-    .not("reputation", "is", null);
-
-  if (storesError) {
-    return new Response(JSON.stringify({ error: storesError.message }), { status: 500 });
+  // Pagination avoids silently truncating histories at Supabase's default row limit.
+  const stores: StoreRow[] = [];
+  for (let offset = 0; offset <= 2000; offset += 500) {
+    const { data, error } = await supabase.from("store")
+      .select("id, category, reputation, price_level, google_rating, review_count, created_at, image(id, image, created_at)")
+      .eq("user_id", userId).not("reputation", "is", null)
+      .order("id").range(offset, offset + 499);
+    if (error) return jsonError("店舗履歴を取得できませんでした", 502);
+    stores.push(...(data ?? []));
+    if (stores.length > 2000) return jsonError("学習対象の店舗記録は2000件までです", 400);
+    if ((data ?? []).length < 500) break;
   }
 
   type StoreRow = {
@@ -72,44 +76,34 @@ Deno.serve(async (req: Request) => {
     google_rating: number | null;
     review_count: number | null;
     created_at: string;
-    image: { id: string; image: string }[] | null;
+    image: { id: string; image: string; created_at: string }[] | null;
   };
 
-  // 画像のダウンロードはネットワークI/O待ちが大半なので、店舗数分を並列化する
-  // (店舗数が多いユーザーで1件ずつ待つと、Cloud Run側の処理時間と合わせてクライアントの
-  // タイムアウトを超えることがあった)。
-  const storesWithPhotos = (stores ?? []).filter((s: StoreRow) => s.image?.[0]);
-  const historyResults = await Promise.all(
-    storesWithPhotos.map(async (store: StoreRow) => {
-      const firstImage = store.image![0];
+  // Representative photo order matches repository.py. Bound download concurrency.
+  const storesWithPhotos = stores.filter((store) => store.image?.length);
+  const historyResults: (Record<string, unknown> | null)[] = [];
+  for (let start = 0; start < storesWithPhotos.length; start += 8) {
+    const batch = await Promise.all(storesWithPhotos.slice(start, start + 8).map(async (store) => {
+      const firstImage = [...store.image!].sort((a, b) =>
+        a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))[0];
       const { data: fileData, error: downloadError } = await supabase.storage
-        .from(RECORD_IMAGES_BUCKET)
-        .download(firstImage.image);
-      if (downloadError || !fileData) return null;
-
+        .from(RECORD_IMAGES_BUCKET).download(firstImage.image);
+      // A temporary Storage failure must not lower the apparent store count.
+      if (downloadError || !fileData) throw new Error("history download failed");
+      if (fileData.size > 5 * 1024 * 1024) return null;
       const bytes = new Uint8Array(await fileData.arrayBuffer());
       return {
-        place_id: store.id,
-        image_id: firstImage.id,
-        image_base64: encodeBase64(bytes),
-        category: store.category ?? "その他",
-        price_level: store.price_level ?? DEFAULTS.price_level,
+        place_id: store.id, image_id: firstImage.id, image_base64: encodeBase64(bytes),
+        category: store.category ?? "その他", price_level: store.price_level ?? DEFAULTS.price_level,
         google_rating: store.google_rating ?? DEFAULTS.google_rating,
         review_count: store.review_count ?? DEFAULTS.review_count,
-        user_id: userId,
-        rating: store.reputation,
-        rated_at: store.created_at,
+        user_id: userId, rating: store.reputation, rated_at: store.created_at,
       };
-    }),
-  );
-  const history = historyResults.filter((h): h is Record<string, unknown> => h !== null);
-
-  if (history.length < MIN_RECORDS) {
-    return new Response(
-      JSON.stringify({ error: `AIを育てるには、あと${MIN_RECORDS - history.length}件お店を登録してください` }),
-      { status: 400 },
-    );
+    })).catch(() => null);
+    if (!batch) return jsonError("写真を取得できませんでした。しばらくしてから再度お試しください", 503);
+    historyResults.push(...batch);
   }
+  const history = historyResults.filter((h): h is Record<string, unknown> => h !== null);
 
   const aiBackendUrl = Deno.env.get("AI_BACKEND_URL");
   const aiBackendApiKey = Deno.env.get("AI_BACKEND_API_KEY");
@@ -124,30 +118,21 @@ Deno.serve(async (req: Request) => {
       headers: { "Content-Type": "application/json", "X-API-Key": aiBackendApiKey },
       body: JSON.stringify({ user_id: userId, free_text, lat, lng, history }),
     });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: `AI backend unreachable: ${e}` }), { status: 502 });
+  } catch {
+    return jsonError("AIサーバーに接続できませんでした", 502);
   }
 
   const resultText = await backendResponse.text();
 
-  if (backendResponse.ok) {
+  // Only the training Job publishes model statistics. Preserve iOS error format.
+  if (!backendResponse.ok) {
+    let message = "おすすめを取得できませんでした";
     try {
-      const result = JSON.parse(resultText);
-      const modelStats = result.model_stats;
-      if (modelStats) {
-        await supabase.from("ai_model_status").upsert({
-          user_id: userId,
-          record_count: modelStats.trained_records ?? history.length,
-          mean_abs_error: modelStats.mean_abs_error ?? null,
-          model_gcs_path: modelStats.model_path ?? null,
-          trained_at: new Date().toISOString(),
-        });
-      }
-    } catch {
-      // 統計の保存に失敗しても、レコメンド結果自体は返す。
-    }
+      const parsed = JSON.parse(resultText);
+      if (typeof parsed.detail === "string") message = parsed.detail;
+    } catch { /* generic error */ }
+    return jsonError(message, backendResponse.status);
   }
-
   return new Response(resultText, {
     status: backendResponse.status,
     headers: { "Content-Type": "application/json" },
@@ -161,4 +146,8 @@ function encodeBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
   return btoa(binary);
+}
+
+function jsonError(error: string, status: number): Response {
+  return new Response(JSON.stringify({ error }), { status, headers: { "Content-Type": "application/json" } });
 }

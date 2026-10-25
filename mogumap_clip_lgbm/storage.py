@@ -1,9 +1,12 @@
-"""モデルの保存先。Cloud Runはステートレスなので本番はGCS、ローカル実行時はファイルにフォールバック。"""
+"""Immutable model generations. Publishing a generation is a separate DB transaction."""
 from __future__ import annotations
 
 import io
 import os
+import re
+import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 import joblib
 
@@ -11,40 +14,63 @@ BUCKET = os.getenv("MODEL_BUCKET")
 LOCAL_DIR = Path(__file__).resolve().parent / "artifacts"
 
 
-def _blob_path(user_id: str) -> str:
-    return f"models/{user_id}/model.joblib"
+def component(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value):
+        raise ValueError("invalid model identifier")
+    return value
 
 
 def _gcs_bucket():
     from google.cloud import storage
-
     return storage.Client().bucket(BUCKET)
 
 
-def save_artifact(user_id: str, bundle: dict) -> str:
+def artifact_key(user_id: str, version: str | None = None, prefix: str = "models") -> str:
+    if prefix not in ("models", "manual-tests"):
+        raise ValueError("invalid artifact prefix")
+    suffix = f"{component(version)}/" if version else ""
+    return f"{prefix}/{component(user_id)}/{suffix}model.joblib"
+
+
+def save_artifact(user_id: str, bundle: dict, version: str | None = None,
+                  output_dir: Path | None = None, *, prefix: str = "models") -> str:
+    version = version or uuid4().hex
+    key = artifact_key(user_id, version, prefix)
     buf = io.BytesIO()
     joblib.dump(bundle, buf)
-    buf.seek(0)
-    if BUCKET:
-        blob = _gcs_bucket().blob(_blob_path(user_id))
-        blob.upload_from_file(buf, content_type="application/octet-stream")
-        return f"gs://{BUCKET}/{_blob_path(user_id)}"
-    LOCAL_DIR.mkdir(parents=True, exist_ok=True)
-    path = LOCAL_DIR / f"{user_id}.joblib"
-    path.write_bytes(buf.getvalue())
+    if BUCKET and output_dir is None:
+        buf.seek(0)
+        _gcs_bucket().blob(key).upload_from_file(
+            buf, content_type="application/octet-stream", if_generation_match=0,
+        )
+        return f"gs://{BUCKET}/{key}"
+    path = (output_dir or LOCAL_DIR) / key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Avoid exposing partially-written models to concurrent readers.
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as tmp:
+        tmp.write(buf.getvalue())
+        temp_path = Path(tmp.name)
+    os.replace(temp_path, path)
     return str(path)
 
 
-def load_artifact(user_id: str) -> dict | None:
-    if BUCKET:
-        blob = _gcs_bucket().blob(_blob_path(user_id))
-        if not blob.exists():
+def load_artifact(user_id: str, version: str | None = None,
+                  output_dir: Path | None = None) -> dict | None:
+    key = artifact_key(user_id, version)
+    if BUCKET and output_dir is None:
+        from google.api_core.exceptions import NotFound
+        try:
+            data = _gcs_bucket().blob(key).download_as_bytes()
+        except NotFound:
             return None
-        buf = io.BytesIO()
-        blob.download_to_file(buf)
-        buf.seek(0)
-        return joblib.load(buf)
-    path = LOCAL_DIR / f"{user_id}.joblib"
+        return joblib.load(io.BytesIO(data))
+    path = (output_dir or LOCAL_DIR) / key
     if not path.exists():
         return None
     return joblib.load(path)
+
+
+def serialized_size(bundle: dict) -> int:
+    buf = io.BytesIO()
+    joblib.dump(bundle, buf)
+    return buf.tell()
