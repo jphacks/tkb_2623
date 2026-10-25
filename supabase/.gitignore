@@ -6,3 +6,6 @@
 .env.keys
 .env.local
 .env.*.local
+
+# Edge Function の Secret（GEMINI_API_KEY など）。ひな形は functions/.env.example
+functions/.env
