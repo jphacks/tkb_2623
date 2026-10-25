@@ -40,6 +40,22 @@ Edge FunctionはユーザーJWTを検証し、本人の `store` と関連する 
 
 バックエンドはまず履歴のメタ情報を検証します。0〜5件、または公開済みモデルがない場合は、Storageにも画像検証にもアクセスせずGeminiへ進みます。LightGBMを使う場合だけ、バックエンドが本人の履歴・写真をSupabaseから取得して画像を検証し、CLIPへ入力します。実際に利用できる画像が6件未満の場合や、画像取得・モデル利用に失敗した場合はGeminiへ切り替えます。
 
+## iOSアプリからの呼び出し
+
+[GrowViewModel.swift](../GourmetShareMap/Features/Grow/ViewModels/GrowViewModel.swift) が現在地を取得し、[LiveRecommendService.swift](../GourmetShareMap/Features/Grow/Services/LiveRecommendService.swift) から次のリクエストを送ります。リクエストのタイムアウトは120秒です。
+
+```http
+POST <SUPABASE_URL>/functions/v1/ai-recommend
+Authorization: Bearer <Supabaseアクセストークン>
+Content-Type: application/json
+
+{"free_text":"静かな和食を食べたい","lat":35.6812,"lng":139.7671}
+```
+
+アプリは `user_id`・履歴・モデルを送信しません。Edge Functionが認証済みユーザーのDBとStorageから履歴を組み立て、`X-API-Key` を付けてCloud Runの `/recommend` へ渡します。モデルの選択には、バックエンドで画像・評価を検証した有効件数を使うため、画面の登録件数と異なる場合があります。
+
+推薦結果は `predictions` の店舗ID・店名・カテゴリ・予測評価から表示し、店舗IDを使ってGoogle Mapsを開きます。学習状態は `ai_model_status` の `record_count`・`mean_abs_error` を別途読み込みます。状態取得は画面表示時や記録変更時に行い、自動学習の完了直後に画面を更新する処理はありません。
+
 ## 使用モデルと学習方法
 
 | 要素 | モデル・処理 | 学習 |
@@ -251,4 +267,19 @@ bash supabase/tests/check_ai_training_db.sh
 
 Pythonテストは外部APIをモックし、実際のLightGBM学習・シリアライズも検証します。DBテストは一時PostgreSQLコンテナで、マイグレーション、画像後着、排他、期限切れ、公開・失敗・権限を確認し、既存DBへ接続しません。Docker実行権限が必要です。Node 24によるEdge Functionテストも外部通信をモックして実コードを実行します（Denoの型チェックは別途必要です）。
 
-主な実装は `policy.py`（条件）、`history.py`（学習・ML用画像検証）、`metadata.py`（画像なしの推薦用履歴検証）、`repository.py`（Supabase）、`training_worker.py`（自動学習）、`train_cli.py`（手動）、`api.py`（API）、`recommend.py`（候補・Gemini）、`ml.py`（CLIP・LightGBM）、`storage.py`（世代別保存）です。変更方針は [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) を参照してください。
+## ファイル構成
+
+| ファイル | 役割 |
+|---|---|
+| [api.py](api.py) | FastAPI、共有キー認証、レート制限、推薦方式の選択 |
+| [policy.py](policy.py) | 件数条件、カテゴリ、学習ポリシー |
+| [history.py](history.py) | 履歴の検証・補完、画像検証、学習対象のスナップショット |
+| [repository.py](repository.py) | Supabase REST APIによる履歴・画像・状態の取得、ジョブ操作 |
+| [recommend.py](recommend.py) | Gemini、Places検索、候補写真の取得 |
+| [ml.py](ml.py) | CLIP特徴量、LightGBM学習・評価・推論 |
+| [storage.py](storage.py) | GCS／ローカルへの世代別モデル保存 |
+| [training_worker.py](training_worker.py) | 自動学習Job、リース更新、失敗処理 |
+| [train_cli.py](train_cli.py) | 開発者向けの手動学習・検証・公開 |
+| [deploy/](deploy/) | GCP設定・デプロイ・手動Job・スケジュール有効化 |
+| [tests/](tests/) | Pythonのテスト |
+| [ai-recommend/index.ts](../supabase/functions/ai-recommend/index.ts) | iOSとCloud Runの中継 |
