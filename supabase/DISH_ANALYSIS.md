@@ -27,7 +27,7 @@
 
 | 部分 | ファイル | 状態 |
 |---|---|---|
-| 保存先カラム | `migrations/20261025000000_image_dish_features.sql` | 実装済み |
+| 保存先カラム | `migrations/20261025020000_image_dish_features.sql` | 実装済み |
 | Edge Function（Webhook 受付 → 解析 → 保存） | `functions/analyze-dish/index.ts` | 実装済み |
 | Gemini 呼び出し・プロンプト・JSON Schema | `functions/analyze-dish/gemini.ts` / `schema.ts` | 実装済み |
 | JSON のテンプレート（形式・系統・部品・選択肢） | `functions/analyze-dish/vocab/v1.ts` | 実装済み（全13カテゴリ） |
@@ -102,7 +102,7 @@ API キーはアプリや git に置かず、Edge Function の Secret にだけ�
 
 ### 1. カラムの追加
 
-ダッシュボード > SQL Editor で `migrations/20261025000000_image_dish_features.sql` を実行します。
+ダッシュボード > SQL Editor で `migrations/20261025020000_image_dish_features.sql` を実行します。
 
 ### 2. Edge Function のデプロイ
 

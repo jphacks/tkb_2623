@@ -359,3 +359,10 @@ bash supabase/tests/check_friend_db.sh
 一時PostgreSQL 17に `migrations/` を順に適用し（Auth・Storageは最小構成のスタブ）、
 `tests/friend_user_name.sql`・`tests/friend_request.sql`・`tests/friend_search.sql` を実行します。
 既存データの補完は、user_name 必須化の前に `tests/friend_legacy_seed.sql` を投入して確認します。
+
+## 料理写真の特徴抽出（Gemini）
+
+記録写真を追加すると、Database Webhook 経由で Edge Function `analyze-dish` が Gemini で料理の特徴を抽出し、
+`image.dish_features` に保存します。設計・設定手順・動作確認の方法は [DISH_ANALYSIS.md](DISH_ANALYSIS.md) を参照してください。
+
+手動で適用する migration: `migrations/20261025020000_image_dish_features.sql`（image に `dish_features` / `dish_features_status` を追加）
