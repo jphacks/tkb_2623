@@ -5,7 +5,8 @@
 
 import SwiftUI
 
-/// 育てる。登録した店舗数（= AIの学習データ数）でまんぷく先生が3段階に育つ画面。
+/// 育てる。登録した店舗数（= AIの学習データ数）で相棒が3段階に育つ画面。
+/// どのキャラが出るかは一番多く登録しているカテゴリで決まる（`MascotCharacterMapping`）。
 /// 学習と推論はCloud Run上のAIバックエンドが担当し、この画面はSupabase Edge Function経由で呼び出すだけ。
 struct GrowView: View {
     @Environment(RecordStore.self) private var recordStore
@@ -16,6 +17,11 @@ struct GrowView: View {
 
     private var progress: MascotProgress {
         viewModel.progress(storeCount: recordStore.records.count)
+    }
+
+    /// 一番多く登録しているカテゴリ×今のレベルで決まるキャラ。
+    private var character: MascotCharacter {
+        MascotCharacterMapping.character(records: recordStore.records, level: progress.level)
     }
 
     var body: some View {
@@ -72,7 +78,7 @@ struct GrowView: View {
             .padding(.horizontal, 14)
             .padding(.top, 14)
 
-            MascotAnimationView(level: progress.level)
+            MascotAnimationView(character: character, level: progress.level)
                 .frame(height: 176)
                 .padding(.horizontal, 20)
 
@@ -105,7 +111,7 @@ struct GrowView: View {
                 .frame(width: 26, height: 26)
                 .background(.appPrimary, in: Circle())
 
-            Text(progress.level.name)
+            Text(character.displayName)
                 .font(.system(size: 12.5, weight: .bold))
                 .foregroundStyle(.appText)
         }

@@ -5,8 +5,10 @@
 
 import Foundation
 
-/// まんぷく先生の成長段階。登録した店舗数（= AIの学習データ数）で決まる。
-/// 境界は 0〜4件 / 5〜19件 / 20件以上 の3段階で、Lv.3 が最大。
+/// 育てる画面の成長段階。登録した店舗数（= AIの学習データ数）で決まる。
+/// 境界は 0〜5件 / 6〜20件 / 21件以上 の3段階で、Lv.3 が最大。
+/// どのキャラを見せるかはレベルだけでは決まらず、[[MascotCharacterMapping]] が
+/// 「一番多く登録しているカテゴリ」と掛け合わせて決める。
 enum MascotLevel: Int, CaseIterable, Identifiable, Sendable {
     case lv1 = 1
     case lv2 = 2
@@ -18,35 +20,17 @@ enum MascotLevel: Int, CaseIterable, Identifiable, Sendable {
     var requiredStoreCount: Int {
         switch self {
         case .lv1: 0
-        case .lv2: 5
-        case .lv3: 20
+        case .lv2: 6
+        case .lv3: 21
         }
     }
 
-    var name: String {
-        switch self {
-        case .lv1: "ごはんつぶ"
-        case .lv2: "みならいコック"
-        case .lv3: "まんぷく先生"
-        }
-    }
-
-    /// 「Lv.2 みならいコック」。
-    var title: String { "Lv.\(rawValue) \(name)" }
+    /// 「Lv.2」。
+    var title: String { "Lv.\(rawValue)" }
 
     var isMax: Bool { self == .lv3 }
 
     var next: MascotLevel? { MascotLevel(rawValue: rawValue + 1) }
-
-    /// 届いたキャラクター画像を入れるAsset名。この順にコマ送りしてループする。
-    /// 枚数は決め打ちせずAssetに入っている分だけ使うので、後から増減できる。
-    /// 予定は Lv.1に2枚・Lv.2に3枚・Lv.3に3枚（計8枚）。
-    var frameImageNames: [String] {
-        (1...Self.maxFrameCount).map { String(format: "mascot_lv%d_%02d", rawValue, $0) }
-    }
-
-    /// 1レベルあたり探すコマ数の上限。実際に使うのはAssetに存在する分だけ。
-    static let maxFrameCount = 6
 
     static func forStoreCount(_ count: Int) -> MascotLevel {
         if count >= MascotLevel.lv3.requiredStoreCount { return .lv3 }
