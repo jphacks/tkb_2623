@@ -32,6 +32,23 @@ final class FakeTimelineUserBlocker: TimelineUserBlocking {
 }
 
 @MainActor
+final class FakeLikeToggler: LikeToggling {
+    var error: (any Error)?
+    private(set) var likedStoreIDs: [UUID] = []
+    private(set) var unlikedStoreIDs: [UUID] = []
+
+    func like(storeID: UUID) async throws {
+        if let error { throw error }
+        likedStoreIDs.append(storeID)
+    }
+
+    func unlike(storeID: UUID) async throws {
+        if let error { throw error }
+        unlikedStoreIDs.append(storeID)
+    }
+}
+
+@MainActor
 struct TimelineViewModelTests {
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -48,20 +65,29 @@ struct TimelineViewModelTests {
         calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
     }
 
-    private func post(_ name: String, at createdAt: Date, isMine: Bool) -> TimelinePost {
+    private func post(
+        _ name: String, at createdAt: Date, isMine: Bool, commentCount: Int = 0,
+        likeCount: Int = 0, isLikedByMe: Bool = false
+    ) -> TimelinePost {
         TimelinePost(
             id: UUID(), storeName: name, category: "カフェ・喫茶", memo: nil, userID: UUID(),
-            userName: "あおい", isMine: isMine, createdAt: createdAt, coverImageURL: nil
+            userName: "あおい", userAvatarURL: nil, isMine: isMine, createdAt: createdAt, coverImageURL: nil,
+            commentCount: commentCount, likeCount: likeCount, isLikedByMe: isLikedByMe
         )
     }
 
     private func makeViewModel(
         _ fetcher: FakeTimelineFeedFetcher,
-        blocker: FakeTimelineUserBlocker? = nil
+        blocker: FakeTimelineUserBlocker? = nil,
+        like: FakeLikeToggler? = nil
     ) -> TimelineViewModel {
         let now = now
         return TimelineViewModel(
-            repository: fetcher, blockRepository: blocker ?? FakeTimelineUserBlocker(), calendar: calendar, now: { now }
+            repository: fetcher,
+            blockRepository: blocker ?? FakeTimelineUserBlocker(),
+            likeRepository: like ?? FakeLikeToggler(),
+            calendar: calendar,
+            now: { now }
         )
     }
 
@@ -149,11 +175,13 @@ struct TimelineViewModelTests {
         fetcher.feed = TimelineFeed(posts: [
             TimelinePost(
                 id: UUID(), storeName: "ブロック対象の店", category: nil, memo: nil, userID: blockedUserID,
-                userName: "太郎", isMine: false, createdAt: date(day: 24, hour: 13), coverImageURL: nil
+                userName: "太郎", userAvatarURL: nil, isMine: false, createdAt: date(day: 24, hour: 13),
+                coverImageURL: nil, commentCount: 0, likeCount: 0, isLikedByMe: false
             ),
             TimelinePost(
                 id: UUID(), storeName: "残る店", category: nil, memo: nil, userID: remainingUserID,
-                userName: "花子", isMine: false, createdAt: date(day: 24, hour: 12), coverImageURL: nil
+                userName: "花子", userAvatarURL: nil, isMine: false, createdAt: date(day: 24, hour: 12),
+                coverImageURL: nil, commentCount: 0, likeCount: 0, isLikedByMe: false
             ),
         ], friendCount: 2)
         let blocker = FakeTimelineUserBlocker()
@@ -180,5 +208,50 @@ struct TimelineViewModelTests {
 
         #expect(viewModel.posts.map(\.storeName) == ["フレンドの店"])
         #expect(viewModel.blockErrorMessage != nil)
+    }
+
+    @Test func いいねすると即座に反映され送信される() async {
+        let fetcher = FakeTimelineFeedFetcher()
+        let target = post("自分の店", at: date(day: 24, hour: 13), isMine: true, likeCount: 2, isLikedByMe: false)
+        fetcher.feed = TimelineFeed(posts: [target], friendCount: 0)
+        let like = FakeLikeToggler()
+        let viewModel = makeViewModel(fetcher, like: like)
+        await viewModel.load()
+
+        await viewModel.toggleLike(for: target)
+
+        #expect(viewModel.posts[0].isLikedByMe)
+        #expect(viewModel.posts[0].likeCount == 3)
+        #expect(like.likedStoreIDs == [target.id])
+    }
+
+    @Test func いいね済みを解除すると件数が減る() async {
+        let fetcher = FakeTimelineFeedFetcher()
+        let target = post("自分の店", at: date(day: 24, hour: 13), isMine: true, likeCount: 2, isLikedByMe: true)
+        fetcher.feed = TimelineFeed(posts: [target], friendCount: 0)
+        let like = FakeLikeToggler()
+        let viewModel = makeViewModel(fetcher, like: like)
+        await viewModel.load()
+
+        await viewModel.toggleLike(for: target)
+
+        #expect(!viewModel.posts[0].isLikedByMe)
+        #expect(viewModel.posts[0].likeCount == 1)
+        #expect(like.unlikedStoreIDs == [target.id])
+    }
+
+    @Test func いいね送信に失敗すると元に戻る() async {
+        let fetcher = FakeTimelineFeedFetcher()
+        let target = post("自分の店", at: date(day: 24, hour: 13), isMine: true, likeCount: 2, isLikedByMe: false)
+        fetcher.feed = TimelineFeed(posts: [target], friendCount: 0)
+        let like = FakeLikeToggler()
+        like.error = URLError(.notConnectedToInternet)
+        let viewModel = makeViewModel(fetcher, like: like)
+        await viewModel.load()
+
+        await viewModel.toggleLike(for: target)
+
+        #expect(!viewModel.posts[0].isLikedByMe)
+        #expect(viewModel.posts[0].likeCount == 2)
     }
 }

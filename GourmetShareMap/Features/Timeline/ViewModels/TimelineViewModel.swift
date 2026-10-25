@@ -19,6 +19,14 @@ protocol TimelineUserBlocking {
 extension TimelineRepository: TimelineFeedFetching {}
 extension BlockRepository: TimelineUserBlocking {}
 
+/// いいねの追加・取り消し（`LikeRepository`）。テストで差し替えられるようにプロトコルにしている。
+protocol LikeToggling {
+    func like(storeID: UUID) async throws
+    func unlike(storeID: UUID) async throws
+}
+
+extension LikeRepository: LikeToggling {}
+
 enum TimelineFilter: String, CaseIterable, Identifiable {
     case all = "すべて"
     case mine = "自分"
@@ -57,6 +65,7 @@ final class TimelineViewModel {
 
     private let repository: any TimelineFeedFetching
     private let blockRepository: any TimelineUserBlocking
+    private let likeRepository: any LikeToggling
     private let calendar: Calendar
     private let now: () -> Date
 
@@ -64,11 +73,13 @@ final class TimelineViewModel {
     init(
         repository: (any TimelineFeedFetching)? = nil,
         blockRepository: (any TimelineUserBlocking)? = nil,
+        likeRepository: (any LikeToggling)? = nil,
         calendar: Calendar = .current,
         now: @escaping () -> Date = { .now }
     ) {
         self.repository = repository ?? TimelineRepository()
         self.blockRepository = blockRepository ?? BlockRepository()
+        self.likeRepository = likeRepository ?? LikeRepository()
         self.calendar = calendar
         self.now = now
     }
@@ -122,6 +133,24 @@ final class TimelineViewModel {
             posts.removeAll { $0.userID == post.userID }
         } catch {
             blockErrorMessage = error.localizedDescription
+        }
+    }
+
+    /// いいねの状態を即座に反転させてから送信する（楽観的更新）。失敗したら元に戻す。
+    func toggleLike(for post: TimelinePost) async {
+        guard let index = posts.firstIndex(where: { $0.id == post.id }) else { return }
+        let wasLiked = posts[index].isLikedByMe
+        posts[index] = posts[index].togglingLike()
+        do {
+            if wasLiked {
+                try await likeRepository.unlike(storeID: post.id)
+            } else {
+                try await likeRepository.like(storeID: post.id)
+            }
+        } catch {
+            if let revertIndex = posts.firstIndex(where: { $0.id == post.id }) {
+                posts[revertIndex] = posts[revertIndex].togglingLike()
+            }
         }
     }
 

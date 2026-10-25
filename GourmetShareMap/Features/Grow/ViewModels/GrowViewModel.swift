@@ -3,6 +3,7 @@
 //  GourmetShareMap
 //
 
+import CoreLocation
 import Foundation
 import Observation
 
@@ -12,15 +13,17 @@ import Observation
 final class GrowViewModel {
     private(set) var stats: ModelStats?
     private(set) var isRecommending = false
-    private(set) var recommendation: Recommendation?
+    private(set) var recommendations: [Recommendation] = []
     /// レコメンドに失敗したときの表示用メッセージ。
     private(set) var recommendErrorMessage: String?
 
     private let service: any RecommendServing
+    private let locationService: LocationService
 
-    /// 引数を省略すると、APIが繋がるまでの仮実装を使う。
-    init(service: (any RecommendServing)? = nil) {
-        self.service = service ?? MockRecommendService()
+    /// 引数を省略すると、実際のAIバックエンドに繋がる本番実装を使う。
+    init(service: (any RecommendServing)? = nil, locationService: LocationService = LocationService()) {
+        self.service = service ?? LiveRecommendService()
+        self.locationService = locationService
     }
 
     func progress(storeCount: Int) -> MascotProgress {
@@ -36,19 +39,27 @@ final class GrowViewModel {
         }
     }
 
-    func recommend(records: [StoreRecord]) async {
+    /// `freeText`（「ラーメン食べたい」等）と現在地から、おすすめ上位3件を取りに行く。
+    func recommend(freeText: String, records: [StoreRecord]) async {
         guard !isRecommending else { return }
         isRecommending = true
         recommendErrorMessage = nil
+        recommendations = []
         do {
-            recommendation = try await service.recommend(from: records)
+            let coordinate = try await locationService.currentCoordinate()
+            recommendations = try await service.recommend(
+                freeText: freeText, latitude: coordinate.latitude, longitude: coordinate.longitude, records: records
+            )
+            if recommendations.isEmpty {
+                recommendErrorMessage = "近くに合うお店が見つかりませんでした。別の言葉で試してください。"
+            }
         } catch {
             recommendErrorMessage = error.localizedDescription
         }
         isRecommending = false
     }
 
-    func dismissRecommendation() {
-        recommendation = nil
+    func dismissRecommendations() {
+        recommendations = []
     }
 }

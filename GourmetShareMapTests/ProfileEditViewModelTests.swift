@@ -7,7 +7,7 @@ struct ProfileEditViewModelTests {
     @Test func loadPopulatesNameBioAndAvatarPreviewURL() async throws {
         let signedURL = URL(string: "https://example.com/signed/old-icon.jpg")!
         let fake = FakeProfileEditDataSource(
-            profile: .success(makeProfile(name: "はる", bio: "麺が好きです", profileImage: "u/old-icon.jpg"))
+            profile: .success(makeProfile(name: "はる", bio: "麺が好きです", profileImage: "u/old-icon.jpg", userName: "haru_01"))
         )
         fake.signedURLResult = .success(signedURL)
         let viewModel = ProfileEditViewModel(dataSource: fake)
@@ -15,6 +15,7 @@ struct ProfileEditViewModelTests {
         await viewModel.load()
 
         #expect(viewModel.name == "はる")
+        #expect(viewModel.userName == "haru_01")
         #expect(viewModel.bio == "麺が好きです")
         #expect(viewModel.avatarPreviewURL == signedURL)
         #expect(viewModel.isLoading == false)
@@ -45,6 +46,7 @@ struct ProfileEditViewModelTests {
     @Test func saveCallsUpdateMyProfileWithTrimmedValues() async throws {
         let fake = FakeProfileEditDataSource(profile: .success(makeProfile()))
         let viewModel = ProfileEditViewModel(dataSource: fake)
+        await viewModel.load()
         viewModel.name = " 新しい名前 "
         viewModel.bio = " 自己紹介\n"
 
@@ -52,14 +54,66 @@ struct ProfileEditViewModelTests {
 
         #expect(fake.lastUpdateName == "新しい名前")
         #expect(fake.lastUpdateBio == "自己紹介")
+        #expect(fake.lastUpdateUserName == "test_user")
         #expect(viewModel.didSaveSuccessfully == true)
         #expect(viewModel.isSaving == false)
         #expect(viewModel.errorMessage == nil)
     }
 
+    // MARK: - user_name
+
+    @Test func userNameIsLowercasedWhileTyping() async throws {
+        let viewModel = ProfileEditViewModel(dataSource: FakeProfileEditDataSource(profile: .success(makeProfile())))
+
+        viewModel.userName = "Haru_ABC"
+
+        #expect(viewModel.userName == "haru_abc")
+    }
+
+    @Test func saveSendsNormalizedUserName() async throws {
+        let fake = FakeProfileEditDataSource(profile: .success(makeProfile()))
+        let viewModel = ProfileEditViewModel(dataSource: fake)
+        await viewModel.load()
+        viewModel.userName = "  New_Name1 "
+
+        await viewModel.save()
+
+        #expect(fake.lastUpdateUserName == "new_name1")
+        #expect(viewModel.userName == "new_name1")
+        #expect(viewModel.didSaveSuccessfully == true)
+    }
+
+    @Test(arguments: ["ab", "abcdefghijklmnopqrstu", "with-hyphen", "日本語", ""])
+    func saveRejectsInvalidUserNameWithoutRequest(userName: String) async throws {
+        let fake = FakeProfileEditDataSource(profile: .success(makeProfile()))
+        let viewModel = ProfileEditViewModel(dataSource: fake)
+        await viewModel.load()
+        viewModel.userName = userName
+
+        await viewModel.save()
+
+        #expect(fake.updateCallCount == 0)
+        #expect(viewModel.errorMessage == UserName.formatMessage)
+        #expect(viewModel.didSaveSuccessfully == false)
+        #expect(viewModel.isSaving == false)
+    }
+
+    @Test func saveShowsDuplicateUserNameError() async throws {
+        let fake = FakeProfileEditDataSource(profile: .success(makeProfile()))
+        fake.updateResult = .failure(UserRepositoryError.userNameTaken)
+        let viewModel = ProfileEditViewModel(dataSource: fake)
+        await viewModel.load()
+
+        await viewModel.save()
+
+        #expect(viewModel.errorMessage == "このユーザー名は既に使われています。")
+        #expect(viewModel.didSaveSuccessfully == false)
+    }
+
     @Test func saveDoesNotUploadImageWhenNoPendingImage() async throws {
         let fake = FakeProfileEditDataSource(profile: .success(makeProfile()))
         let viewModel = ProfileEditViewModel(dataSource: fake)
+        await viewModel.load()  // 保存に必要なユーザー名を読み込む
 
         await viewModel.save()
 
@@ -73,6 +127,7 @@ struct ProfileEditViewModelTests {
         fake.uploadResult = .success("u/new-icon.jpg")
         fake.signedURLResult = .success(newURL)
         let viewModel = ProfileEditViewModel(dataSource: fake)
+        await viewModel.load()  // 保存に必要なユーザー名を読み込む
         let imageData = Data([1, 2, 3])
         viewModel.selectImage(data: imageData, format: .png)
 
@@ -92,6 +147,7 @@ struct ProfileEditViewModelTests {
         let fake = FakeProfileEditDataSource(profile: .success(makeProfile()))
         fake.updateResult = .failure(FakeError(errorDescription: "更新エラー"))
         let viewModel = ProfileEditViewModel(dataSource: fake)
+        await viewModel.load()  // 保存に必要なユーザー名を読み込む
         viewModel.selectImage(data: Data([1]))
 
         await viewModel.save()
@@ -107,6 +163,7 @@ struct ProfileEditViewModelTests {
         let fake = FakeProfileEditDataSource(profile: .success(makeProfile()))
         fake.uploadResult = .failure(FakeError(errorDescription: "アップロードエラー"))
         let viewModel = ProfileEditViewModel(dataSource: fake)
+        await viewModel.load()  // 保存に必要なユーザー名を読み込む
         let imageData = Data([1, 2, 3])
         viewModel.selectImage(data: imageData)
 
@@ -131,9 +188,10 @@ struct ProfileEditViewModelTests {
     }
 
     private func makeProfile(
-        name: String? = "テスト太郎", bio: String? = "よろしくお願いします", profileImage: String? = nil
+        name: String? = "テスト太郎", bio: String? = "よろしくお願いします", profileImage: String? = nil,
+        userName: String? = "test_user"
     ) -> UserProfile {
-        UserProfile(id: UUID(), name: name, bio: bio, profileImage: profileImage)
+        UserProfile(id: UUID(), userName: userName, name: name, bio: bio, profileImage: profileImage)
     }
 }
 
@@ -150,6 +208,8 @@ private final class FakeProfileEditDataSource: ProfileEditDataSource {
 
     private(set) var lastUpdateName: String?
     private(set) var lastUpdateBio: String?
+    private(set) var lastUpdateUserName: String?
+    private(set) var updateCallCount = 0
     private(set) var uploadCallCount = 0
     private(set) var lastUploadData: Data?
     private(set) var lastUploadFormat: RecordImageFormat?
@@ -158,9 +218,11 @@ private final class FakeProfileEditDataSource: ProfileEditDataSource {
 
     func fetchMyProfile() async throws -> UserProfile { try profile.get() }
 
-    func updateMyProfile(name: String?, bio: String?) async throws {
+    func updateMyProfile(name: String?, bio: String?, userName: String?) async throws {
+        updateCallCount += 1
         lastUpdateName = name
         lastUpdateBio = bio
+        lastUpdateUserName = userName
         try updateResult.get()
     }
 

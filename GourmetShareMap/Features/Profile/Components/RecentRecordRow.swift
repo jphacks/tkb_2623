@@ -9,14 +9,7 @@ struct RecentRecordRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(red: 0.93, green: 0.86, blue: 0.72))
-                .frame(width: 64, height: 64)
-                .overlay {
-                    Image(systemName: "fork.knife")
-                        .foregroundStyle(.white)
-                        .font(.system(size: 20))
-                }
+            thumbnail
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(record.storeName)
@@ -40,6 +33,30 @@ struct RecentRecordRow: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color.black.opacity(0.06), lineWidth: 1)
         }
+    }
+
+    /// 表紙写真。写真が無い・読み込み中・失敗時は固定アイコンを表示する。
+    private var thumbnail: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color(red: 0.93, green: 0.86, blue: 0.72))
+            .frame(width: 64, height: 64)
+            .overlay {
+                Image(systemName: "fork.knife")
+                    .foregroundStyle(.white)
+                    .font(.system(size: 20))
+            }
+            .overlay {
+                if let url = record.coverImageURL {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            Color.clear
+                        }
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

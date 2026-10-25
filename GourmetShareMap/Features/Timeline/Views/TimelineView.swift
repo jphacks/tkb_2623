@@ -12,6 +12,10 @@ struct TimelineView: View {
 
     @Environment(RecordStore.self) private var recordStore
     @State private var viewModel = TimelineViewModel()
+    @State private var commentPost: TimelinePost?
+    /// アバター/名前がタップされた投稿。プロフィールのシート表示に使う
+    /// （`TimelinePost`はIdentifiableなため、そのまま`sheet(item:)`に渡せる）。
+    @State private var selectedProfilePost: TimelinePost?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,6 +36,18 @@ struct TimelineView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.blockErrorMessage ?? "")
+        }
+        .sheet(item: $commentPost) { post in
+            CommentSheetView(storeID: post.id, storeName: post.storeName)
+        }
+        .sheet(item: $selectedProfilePost) { post in
+            // 自分の投稿は既存のProfileView（編集・ログアウトあり）、
+            // フレンドの投稿は専用のFriendProfileView（閲覧専用）を開く。
+            if post.isMine {
+                ProfileView()
+            } else {
+                FriendProfileView(userID: post.userID)
+            }
         }
     }
 
@@ -100,8 +116,12 @@ struct TimelineView: View {
                         TimelinePostCard(
                             post: post,
                             timeText: viewModel.timeText(for: post),
-                            onBlock: post.isMine ? nil : { Task { await viewModel.block(post) } }
-                        )
+                            onBlock: post.isMine ? nil : { Task { await viewModel.block(post) } },
+                            onTapUser: { selectedProfilePost = post },
+                            onTapLike: { Task { await viewModel.toggleLike(for: post) } }
+                        ) {
+                            commentPost = post
+                        }
                     }
                 }
             }

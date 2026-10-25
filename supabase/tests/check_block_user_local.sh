@@ -30,7 +30,10 @@ if [[ "$db_ready" != true ]]; then
     exit 1
 fi
 
-# Supabase本体を起動せず、スキーマが参照するAuth要素のみ用意する。
+# Supabase本体を起動せず、スキーマが参照するAuth・Storage要素のみ最小構成で用意する。
+# storage.objects / storage.foldername() はブロック機能のテストでは使わないが、
+# 後続の無関係なマイグレーション（プロフィール画像の参照ポリシーなど）が参照するため、
+# 全マイグレーションを通して適用できるようスタブだけ用意する。
 docker exec -i "$container_name" psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'
 create role authenticated nologin;
 create role anon nologin;
@@ -42,11 +45,22 @@ $$;
 grant usage on schema auth to authenticated, anon;
 grant execute on function auth.uid() to authenticated, anon;
 alter default privileges in schema public grant all on tables to authenticated, anon;
+
+create schema storage;
+create table storage.objects (bucket_id text, name text);
+create function storage.foldername(name text) returns text[] language sql immutable as $$
+    select (string_to_array(name, '/'))[1 : greatest(array_length(string_to_array(name, '/'), 1) - 1, 0)];
+$$;
 SQL
 
-echo '既存の全マイグレーションを適用します。'
+echo '既存の全マイグレーションを適用します（storage.bucketsが必要な20261024025751_storage_policies.sqlのみスキップ）。'
 for migration in "$supabase_dir"/migrations/*.sql; do
-    echo "  適用: $(basename "$migration")"
+    base="$(basename "$migration")"
+    if [[ "$base" == "20261024025751_storage_policies.sql" ]]; then
+        echo "  スキップ: $base"
+        continue
+    fi
+    echo "  適用: $base"
     docker exec -i "$container_name" psql -U postgres -v ON_ERROR_STOP=1 < "$migration"
 done
 

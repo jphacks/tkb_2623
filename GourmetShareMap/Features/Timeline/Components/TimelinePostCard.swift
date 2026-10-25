@@ -11,6 +11,10 @@ struct TimelinePostCard: View {
     let timeText: String
     /// 他ユーザーの投稿のときだけ渡す。指定すると、ブロックの確認後にこれが呼ばれる。
     var onBlock: (() -> Void)?
+    /// アバター・名前タップ時の処理。プロフィール画面をシート表示する等、呼び出し側に委ねる。
+    var onTapUser: () -> Void = {}
+    var onTapLike: () -> Void = {}
+    var onTapComments: () -> Void = {}
 
     @State private var isShowingBlockConfirmation = false
 
@@ -31,6 +35,7 @@ struct TimelinePostCard: View {
             }
             .overlay(alignment: .topLeading) { header.padding(14) }
             .overlay(alignment: .bottomTrailing) { memoLabel }
+            .overlay(alignment: .bottomLeading) { actionRow.padding(12) }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             .accessibilityElement(children: .combine)
@@ -55,15 +60,59 @@ struct TimelinePostCard: View {
             }
     }
 
+    private var actionRow: some View {
+        HStack(spacing: 8) {
+            likeButton
+            commentButton
+        }
+    }
+
+    private var likeButton: some View {
+        Button(action: onTapLike) {
+            HStack(spacing: 4) {
+                Image(systemName: post.isLikedByMe ? "heart.fill" : "heart")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("\(post.likeCount)")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(post.isLikedByMe ? .pink : .white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.black.opacity(0.45), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var commentButton: some View {
+        Button(action: onTapComments) {
+            HStack(spacing: 4) {
+                Image(systemName: "bubble.right")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("\(post.commentCount)")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.black.opacity(0.45), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                UserInitialAvatar(userID: post.userID, name: post.userName)
+                Button(action: onTapUser) {
+                    HStack(spacing: 8) {
+                        UserInitialAvatar(userID: post.userID, name: post.userName, imageURL: post.userAvatarURL)
 
-                Text(post.userName ?? "名前未設定")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
+                        Text(post.userName ?? "名前未設定")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(.plain)
 
                 if post.isMine {
                     Text("自分")
@@ -145,10 +194,14 @@ struct TimelinePostCard: View {
     }
 }
 
-/// 名前の頭文字を丸で囲んだアイコン。背景色はユーザーごとに固定。
+/// ユーザーのアイコン。画像があればそれを、無い・読み込み中・失敗時は名前の頭文字を丸で囲んで表示する。
+/// 頭文字の背景色はユーザーごとに固定。
 struct UserInitialAvatar: View {
     let userID: UUID
     let name: String?
+    var imageURL: URL?
+
+    private let size: CGFloat = 30
 
     private static let palette: [Color] = [
         Color(hex: 0xF6C9B4), Color(hex: 0xF7DFA8), Color(hex: 0xC8DDF2),
@@ -156,12 +209,29 @@ struct UserInitialAvatar: View {
     ]
 
     var body: some View {
+        initial
+            .overlay {
+                if let imageURL {
+                    AsyncImage(url: imageURL) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            Color.clear
+                        }
+                    }
+                }
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .overlay(Circle().strokeBorder(.white, lineWidth: 2))
+    }
+
+    private var initial: some View {
         Text(name?.first.map(String.init) ?? "?")
             .font(.system(size: 13, weight: .bold))
             .foregroundStyle(.appText)
-            .frame(width: 30, height: 30)
+            .frame(width: size, height: size)
             .background(backgroundColor, in: Circle())
-            .overlay(Circle().strokeBorder(.white, lineWidth: 2))
     }
 
     private var backgroundColor: Color {
@@ -177,14 +247,16 @@ struct UserInitialAvatar: View {
             post: TimelinePost(
                 id: UUID(), storeName: "カフェ つむぎ", category: "カフェ・喫茶",
                 memo: "ラテアートがかわいい。季節のタルトもおすすめ", userID: UUID(),
-                userName: "あおい", isMine: false, createdAt: .now, coverImageURL: nil
+                userName: "あおい", userAvatarURL: nil, isMine: false, createdAt: .now, coverImageURL: nil,
+                commentCount: 3, likeCount: 5, isLikedByMe: true
             ),
             timeText: "2時間前"
         )
         TimelinePostCard(
             post: TimelinePost(
                 id: UUID(), storeName: "麺屋 はる", category: "ラーメン・麺類", memo: nil, userID: UUID(),
-                userName: "はる", isMine: true, createdAt: .now, coverImageURL: nil
+                userName: "はる", userAvatarURL: nil, isMine: true, createdAt: .now, coverImageURL: nil,
+                commentCount: 0, likeCount: 0, isLikedByMe: false
             ),
             timeText: "5時間前"
         )
