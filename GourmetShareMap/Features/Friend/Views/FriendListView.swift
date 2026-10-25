@@ -15,6 +15,8 @@ enum FriendRoute: Hashable {
 struct FriendListView: View {
     @Environment(FriendRequestStore.self) private var requestStore
     @State private var viewModel = FriendListViewModel()
+    /// タップされたフレンド。タイムラインと同じ`FriendProfileView`をシート表示する。
+    @State private var selectedFriend: FriendUser?
 
     var body: some View {
         List {
@@ -34,6 +36,9 @@ struct FriendListView: View {
                 }
                 .tint(.appPrimary)
             }
+        }
+        .sheet(item: $selectedFriend) { friend in
+            FriendProfileView(userID: friend.id)
         }
         // 表示のたびに（フレンド追加画面から戻ったときも）一覧と受信申請を取り直す。
         .task { await reload() }
@@ -88,7 +93,18 @@ struct FriendListView: View {
                     emptyView
                 } else {
                     ForEach(viewModel.friends) { friend in
-                        FriendUserRow(user: friend, avatarURL: viewModel.avatarURL(for: friend))
+                        Button {
+                            selectedFriend = friend
+                        } label: {
+                            FriendUserRow(user: friend, avatarURL: viewModel.avatarURL(for: friend)) {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.appText.opacity(0.3))
+                            }
+                            // 行の余白部分をタップしても反応させる。
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
